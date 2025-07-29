@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Caption Extractor & Summarizer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Marked.js for Markdown to HTML conversion -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>YouTube Caption Extractor & Summarizer</h1>
+        <div class="input-group">
+            <input type="text" id="video-url" placeholder="Enter YouTube Video URL">
+            <button id="get-captions-btn" class="btn">Get Captions</button>
+        </div>
+        <div id="loading" class="hidden">Loading...</div>
+        <div id="error" class="hidden"></div>
+        <div class="output-container">
+            <div class="captions-section">
+                <h2>Captions</h2>
+                <textarea id="captions-output" readonly></textarea>
+                <button id="copy-captions-btn" class="btn">Copy Captions</button>
+                <button id="summarize-btn" class="btn hidden">Summarize Captions</button>
+                <div class="summary-section">
+                    <h2>Summary</h2>
+                    <div id="summary-output"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
