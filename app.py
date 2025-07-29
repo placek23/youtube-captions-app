@@ -18,24 +18,31 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
+login_manager.login_message_category = 'info'
 
 @login_manager.user_loader
 def load_user(user_id):
     return get_user(user_id)
 
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Login page and authentication."""
+    print(f"DEBUG: Login route accessed. Method: {request.method}")
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
+        print(f"DEBUG: Login attempt for username: {username}")
         
         user = authenticate_user(username, password)
         if user:
             login_user(user)
+            print(f"DEBUG: Login successful for user: {username}")
             next_page = request.args.get('next')
+            print(f"DEBUG: Next page: {next_page}")
             return redirect(next_page) if next_page else redirect(url_for('index'))
         else:
+            print(f"DEBUG: Login failed for username: {username}")
             flash('Invalid username or password')
     
     return render_template('login.html')
@@ -51,7 +58,8 @@ def logout():
 @login_required
 def index():
     """Renders the main page."""
-    return render_template('index.html')
+    print(f"DEBUG: Accessing index route. User authenticated: {current_user.is_authenticated if current_user else 'No current_user'}")
+    return render_template('index.html', current_user=current_user)
 
 @app.route('/get_captions', methods=['POST'])
 @login_required
@@ -115,8 +123,5 @@ def summarize_route():
         # Return the actual error message to the frontend for easier debugging
         return jsonify({'error': f'An internal error occurred: {str(e)}'}), 500
 
-# For Vercel deployment
-app.debug = False
-
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
