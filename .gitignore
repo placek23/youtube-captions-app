@@ -47,3 +47,4 @@ wheels/
 # Local development
 Scripts/
 Lib/
+.vercel

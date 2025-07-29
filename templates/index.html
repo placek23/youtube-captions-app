@@ -11,6 +11,10 @@
 </head>
 <body>
     <div class="container">
+        <div style="text-align: right; margin-bottom: 1rem;">
+            <span>Welcome, {{ current_user.username }}!</span>
+            <a href="{{ url_for('logout') }}" style="margin-left: 1rem; color: #007bff; text-decoration: none;">Logout</a>
+        </div>
         <h1>YouTube Caption Extractor & Summarizer</h1>
         <div class="input-group">
             <input type="text" id="video-url" placeholder="Enter YouTube Video URL">

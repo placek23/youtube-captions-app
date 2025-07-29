@@ -1,21 +1,60 @@
 import os
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from dotenv import load_dotenv
 from caption_extractor import get_captions
 from urllib.parse import urlparse, parse_qs
 from gemini_summarizer import summarize_text
+from auth import get_user, authenticate_user
 
 # Load environment variables from .env file
 load_dotenv(override=True)
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access this page.'
+
+@login_manager.user_loader
+def load_user(user_id):
+    return get_user(user_id)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page and authentication."""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = authenticate_user(username, password)
+        if user:
+            login_user(user)
+            next_page = request.args.get('next')
+            return redirect(next_page) if next_page else redirect(url_for('index'))
+        else:
+            flash('Invalid username or password')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Logout the current user."""
+    logout_user()
+    return redirect(url_for('login'))
 
 @app.route('/')
+@login_required
 def index():
     """Renders the main page."""
     return render_template('index.html')
 
 @app.route('/get_captions', methods=['POST'])
+@login_required
 def get_captions_route():
     """API endpoint to fetch captions for a given YouTube URL."""
     data = request.get_json()
@@ -54,6 +93,7 @@ def get_captions_route():
         return jsonify({'error': 'An internal error occurred while fetching captions.'}), 500
 
 @app.route('/summarize', methods=['POST'])
+@login_required
 def summarize_route():
     print("--- DEBUG: Entered /summarize route ---") # NEW TOP-LEVEL DEBUG LINE
     """API endpoint to summarize the provided caption text."""
