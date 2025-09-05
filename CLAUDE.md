@@ -8,8 +8,8 @@ This is a Flask web application that extracts YouTube video captions and generat
 ## Architecture
 - **Flask Backend** (`app.py`): Main server with authentication, home page, caption extraction, and summarization endpoints
 - **Authentication System** (`auth.py`): Flask-Login based user authentication with password hashing
-- **Caption Extraction** (`caption_extractor.py`): Uses youtube-transcript-api to fetch captions with fallback language support (Polish → English)
-- **AI Summarization** (`gemini_summarizer.py`): Integrates with Gemini 2.5 Flash model for detailed content analysis
+- **Caption Extraction** (`caption_extractor.py`): Uses youtube-transcript-api v1.2.2 to fetch captions with fallback language support (Polish → English)
+- **AI Summarization** (`gemini_summarizer.py`): Integrates with Gemini 2.5 Flash model using the new Google Gen AI SDK for detailed content analysis
 - **Prompt Engineering** (`prompts.py`): Structured templates for consistent AI output formatting
 - **Frontend**: Vanilla JavaScript with Marked.js for markdown rendering
 - **Environment Configuration**: Requires `.env` file with `GEMINI_API_KEY`
@@ -33,6 +33,8 @@ The app runs in debug mode by default on Flask's development server at `http://1
 # Or if venv is activated:
 # pip install -r requirements.txt
 ```
+
+**Note**: The project now uses `google-genai` (new SDK) instead of the deprecated `google-generativeai` library.
 
 ### Testing Gemini API Connection
 ```bash
@@ -64,16 +66,21 @@ python gemini_summarizer.py
 - **Session Flow**: Login required → Main page → Logout available
 
 ### Caption Processing
+- Uses updated youtube-transcript-api v1.2.2 with new API methods (`YouTubeTranscriptApi().fetch()`)
 - Supports multiple YouTube URL formats (youtube.com/watch, youtu.be)
 - Language preference order: Polish (`pl`) → English (`en`)
+- Enhanced error handling for XML parsing issues and video availability
 - Processes transcript text by replacing internal newlines with spaces
-- Handles API errors gracefully with specific error messages
+- Improved debugging output for troubleshooting caption extraction issues
 
 ### AI Summarization
-- Uses Gemini 2.5 Flash Preview model (`gemini-2.5-flash-preview-05-20`)
-- Streaming response processing for better performance
-- Structured prompt template in `prompts.py` for consistent output format
-- Error handling for API configuration and response issues
+- **Library**: Uses new `google-genai` SDK (replacing deprecated `google-generativeai`)
+- **Model**: Gemini 2.5 Flash (`gemini-2.5-flash`) for advanced content analysis
+- **Configuration**: 20,000 max output tokens for comprehensive summaries
+- **API Pattern**: Uses `client.models.generate_content()` with proper response extraction
+- **Response Handling**: Enhanced debugging and multiple extraction methods for robustness
+- **Error Handling**: Comprehensive error handling for API configuration, token limits, and response issues
+- **Structured Prompts**: Uses templates in `prompts.py` for consistent output formatting
 
 ### Frontend Architecture
 - Single-page application with progressive disclosure (summary button appears after caption extraction)
@@ -82,13 +89,16 @@ python gemini_summarizer.py
 - Loading states and error handling for async operations
 
 ## Development Notes
-- Debug logging is enabled in several places (search for "DEBUG" comments)
-- The app uses Flask's built-in development server (not suitable for production)
-- No database required - stateless processing with in-memory user store
-- Static files served from `static/` directory (CSS, JS)
-- HTML templates in `templates/` directory (`index.html`, `login.html`)
-- Vercel deployment configured with `@vercel/python` builder
-- Mixed Windows/WSL2 environment requires direct Python executable calls
+- **Debugging**: Extensive debug logging enabled throughout (search for "DEBUG" comments)
+- **Server**: Uses Flask's built-in development server (not suitable for production)
+- **Database**: No database required - stateless processing with in-memory user store
+- **Static Files**: Served from `static/` directory (CSS, JS)
+- **Templates**: HTML templates in `templates/` directory (`index.html`, `login.html`)
+- **Deployment**: Vercel deployment configured with `@vercel/python` builder
+- **Environment**: Mixed Windows/WSL2 environment requires direct Python executable calls
+- **Library Updates**: Migrated from deprecated libraries to current versions:
+  - `google-generativeai` → `google-genai`
+  - `youtube-transcript-api` v0.6.1 → v1.2.2
 
 ## Route Protection
 All main application routes require authentication:

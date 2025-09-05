@@ -1,5 +1,6 @@
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 def run_test():
@@ -18,17 +19,22 @@ def run_test():
     print(f"Attempting to use API Key: {api_key[:10]}...{api_key[-4:]}") # Print partial key for verification
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-05-20")
+        # Use the new Google Gen AI SDK
+        client = genai.Client(api_key=api_key)
         
-        print("Model configured. Attempting to generate content...")
-        response = model.generate_content("This is a test prompt.")
+        print("Client configured. Attempting to generate content...")
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents="This is a test prompt.",
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=100
+            )
+        )
         
         print("\n--- API Response ---")
-        if response.parts:
-            print("".join(part.text for part in response.parts))
-        elif response.prompt_feedback and response.prompt_feedback.block_reason:
-            print(f"Content generation failed due to: {response.prompt_feedback.block_reason_message}")
+        if response.text:
+            print(response.text)
         else:
             print("No content generated or unknown issue.")
             print(f"Full response object: {response}")
