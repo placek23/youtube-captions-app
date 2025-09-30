@@ -11,6 +11,12 @@ from caption_extractor import get_captions
 from urllib.parse import urlparse, parse_qs, urljoin
 from gemini_summarizer import summarize_text
 from auth import get_user, authenticate_user
+from channel_manager import add_channel, get_all_channels, get_channel_by_id, delete_channel, get_channel_count
+from video_fetcher import sync_channel_videos, get_pending_videos_count
+from video_processor import process_single_video, process_pending_videos, get_processing_stats
+from models import Video, ProcessingStatus
+from database import get_db_session
+from sqlalchemy import desc
 
 # Load environment variables from .env file
 load_dotenv(override=True)
@@ -198,6 +204,250 @@ def summarize_route():
     except Exception as e:
         logger.error(f"Error summarizing text: {e}", exc_info=True)
         return jsonify({'error': 'An error occurred while generating the summary. Please try again.'}), 500
+
+
+# ============================================================================
+# Channel Management API Endpoints
+# ============================================================================
+
+@app.route('/api/channels', methods=['GET'])
+@login_required
+def get_channels():
+    """Get all subscribed channels."""
+    try:
+        channels = get_all_channels()
+        return jsonify({
+            'channels': [channel.to_dict() for channel in channels],
+            'total': len(channels)
+        })
+    except Exception as e:
+        logger.error(f"Error fetching channels: {e}")
+        return jsonify({'error': 'Failed to fetch channels'}), 500
+
+
+@app.route('/api/channels', methods=['POST'])
+@login_required
+@limiter.limit("10 per minute")
+def add_channel_route():
+    """Add a new YouTube channel subscription."""
+    data = request.get_json()
+    channel_url = data.get('url')
+
+    if not channel_url:
+        return jsonify({'error': 'Channel URL is required'}), 400
+
+    try:
+        channel, error = add_channel(channel_url)
+
+        if error:
+            return jsonify({'error': error}), 400
+
+        return jsonify({
+            'success': True,
+            'channel': channel.to_dict(),
+            'message': f'Successfully subscribed to {channel.channel_name}'
+        }), 201
+
+    except Exception as e:
+        logger.error(f"Error adding channel: {e}")
+        return jsonify({'error': 'Failed to add channel'}), 500
+
+
+@app.route('/api/channels/<int:channel_id>', methods=['DELETE'])
+@login_required
+@limiter.limit("10 per minute")
+def delete_channel_route(channel_id):
+    """Delete a channel subscription."""
+    try:
+        success, error = delete_channel(channel_id)
+
+        if not success:
+            return jsonify({'error': error}), 404
+
+        return jsonify({
+            'success': True,
+            'message': 'Channel deleted successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting channel: {e}")
+        return jsonify({'error': 'Failed to delete channel'}), 500
+
+
+@app.route('/api/channels/<int:channel_id>/sync', methods=['POST'])
+@login_required
+@limiter.limit("5 per minute")
+def sync_channel_route(channel_id):
+    """Manually trigger video sync for a specific channel."""
+    try:
+        max_videos = request.get_json().get('max_videos', 50) if request.is_json else 50
+
+        new_count, skipped_count, error = sync_channel_videos(channel_id, max_videos)
+
+        if error:
+            return jsonify({'error': error}), 400
+
+        return jsonify({
+            'success': True,
+            'new_videos': new_count,
+            'skipped_videos': skipped_count,
+            'message': f'Synced {new_count} new videos'
+        })
+
+    except Exception as e:
+        logger.error(f"Error syncing channel: {e}")
+        return jsonify({'error': 'Failed to sync channel'}), 500
+
+
+# ============================================================================
+# Video Listing API Endpoints
+# ============================================================================
+
+@app.route('/api/videos', methods=['GET'])
+@login_required
+def get_videos():
+    """Get paginated list of videos with optional channel filter."""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        channel_id = request.args.get('channel_id', type=int)
+
+        # Limit per_page to prevent abuse
+        per_page = min(per_page, 50)
+        page = max(page, 1)
+
+        with get_db_session() as session:
+            # Base query
+            query = session.query(Video)
+
+            # Filter by channel if specified
+            if channel_id:
+                query = query.filter(Video.channel_id == channel_id)
+
+            # Order by published date (newest first)
+            query = query.order_by(desc(Video.published_at))
+
+            # Get total count
+            total_count = query.count()
+
+            # Apply pagination
+            offset = (page - 1) * per_page
+            videos = query.offset(offset).limit(per_page).all()
+
+            # Detach from session
+            session.expunge_all()
+
+        # Calculate pagination info
+        total_pages = (total_count + per_page - 1) // per_page
+
+        return jsonify({
+            'videos': [video.to_dict(include_detailed=False) for video in videos],
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'has_next': page < total_pages,
+                'has_prev': page > 1
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching videos: {e}")
+        return jsonify({'error': 'Failed to fetch videos'}), 500
+
+
+@app.route('/api/videos/<video_id>', methods=['GET'])
+@login_required
+def get_video_detail(video_id):
+    """Get detailed information for a specific video."""
+    try:
+        with get_db_session() as session:
+            video = session.query(Video).filter(Video.video_id == video_id).first()
+
+            if not video:
+                return jsonify({'error': 'Video not found'}), 404
+
+            # Detach from session
+            session.expunge(video)
+
+        return jsonify({
+            'video': video.to_dict(include_detailed=True)
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching video detail: {e}")
+        return jsonify({'error': 'Failed to fetch video'}), 500
+
+
+# ============================================================================
+# Video Processing API Endpoints
+# ============================================================================
+
+@app.route('/api/process/video/<int:video_id>', methods=['POST'])
+@login_required
+@limiter.limit("5 per minute")
+def process_video_route(video_id):
+    """Manually trigger processing for a specific video."""
+    try:
+        success, error = process_single_video(video_id)
+
+        if not success:
+            return jsonify({'error': error}), 400
+
+        return jsonify({
+            'success': True,
+            'message': 'Video processed successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing video: {e}")
+        return jsonify({'error': 'Failed to process video'}), 500
+
+
+@app.route('/api/process/pending', methods=['POST'])
+@login_required
+@limiter.limit("3 per minute")
+def process_pending_route():
+    """Process pending videos in batch."""
+    try:
+        max_videos = request.get_json().get('max_videos', 10) if request.is_json else 10
+        max_videos = min(max_videos, 20)  # Limit to prevent timeout
+
+        stats = process_pending_videos(max_videos)
+
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing pending videos: {e}")
+        return jsonify({'error': 'Failed to process videos'}), 500
+
+
+@app.route('/api/stats', methods=['GET'])
+@login_required
+def get_stats():
+    """Get processing and channel statistics."""
+    try:
+        processing_stats = get_processing_stats()
+        channel_count = get_channel_count()
+        pending_count = get_pending_videos_count()
+
+        return jsonify({
+            'channels': {
+                'total': channel_count
+            },
+            'videos': processing_stats,
+            'pending_processing': pending_count
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching stats: {e}")
+        return jsonify({'error': 'Failed to fetch statistics'}), 500
+
 
 if __name__ == '__main__':
     # Use environment variable to control debug mode
