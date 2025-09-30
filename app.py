@@ -39,6 +39,11 @@ app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
 
+# CSRF Configuration for Vercel/serverless environments
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # Disable CSRF token expiration for serverless
+app.config['WTF_CSRF_SSL_STRICT'] = False  # Allow CSRF on HTTP during development
+app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+
 # Initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -101,7 +106,7 @@ def login():
 
         user = authenticate_user(username, password)
         if user:
-            login_user(user)
+            login_user(user, remember=True)  # Use remember=True for serverless compatibility
             logger.info(f"Successful login for user: {username}")
 
             # Safely handle redirect with open redirect protection
