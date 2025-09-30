@@ -8,6 +8,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorDiv = document.getElementById('error');
     const copyCaptionsBtn = document.getElementById('copy-captions-btn');
 
+    // Get CSRF token from meta tag
+    function getCsrfToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    }
+
     getCaptionsBtn.addEventListener('click', async () => {
         const videoUrl = videoUrlInput.value.trim();
         if (!videoUrl) {
@@ -23,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
                 },
                 body: JSON.stringify({ video_url: videoUrl }),
             });
@@ -59,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
                 },
                 body: JSON.stringify({ caption_text: captionText }),
             });
@@ -66,8 +73,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (response.ok) {
-                // Use marked.parse for rendering Markdown from summary
-                summaryOutput.innerHTML = marked.parse(data.summary);
+                // Use marked.parse for rendering Markdown and DOMPurify to sanitize
+                const rawHtml = marked.parse(data.summary);
+                const cleanHtml = DOMPurify.sanitize(rawHtml);
+                summaryOutput.innerHTML = cleanHtml;
             } else {
                 showError(data.error || 'An unknown error occurred during summarization.');
             }
