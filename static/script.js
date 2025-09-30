@@ -8,9 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorDiv = document.getElementById('error');
     const copyCaptionsBtn = document.getElementById('copy-captions-btn');
 
-    // Get CSRF token from meta tag
+    // Get CSRF token from meta tag (returns empty string if not present for serverless)
     function getCsrfToken() {
-        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        return token;
     }
 
     getCaptionsBtn.addEventListener('click', async () => {

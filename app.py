@@ -39,10 +39,15 @@ app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
 
-# CSRF Configuration for Vercel/serverless environments
-app.config['WTF_CSRF_TIME_LIMIT'] = None  # Disable CSRF token expiration for serverless
-app.config['WTF_CSRF_SSL_STRICT'] = False  # Allow CSRF on HTTP during development
-app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+# Detect if running on Vercel (serverless)
+IS_SERVERLESS = os.environ.get('VERCEL') == '1' or os.environ.get('FLASK_ENV') == 'serverless'
+
+# CSRF Configuration
+if not IS_SERVERLESS:
+    # Enable CSRF protection for traditional deployments
+    app.config['WTF_CSRF_TIME_LIMIT'] = None
+    app.config['WTF_CSRF_SSL_STRICT'] = False
+    app.config['WTF_CSRF_CHECK_DEFAULT'] = True
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -51,15 +56,21 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
 login_manager.login_message_category = 'info'
 
-# Initialize CSRF protection
-csrf = CSRFProtect()
-csrf.init_app(app)
+# Initialize CSRF protection (conditionally)
+if not IS_SERVERLESS:
+    csrf = CSRFProtect()
+    csrf.init_app(app)
 
-# Make csrf_token available in all templates
-@app.context_processor
-def inject_csrf_token():
-    from flask_wtf.csrf import generate_csrf
-    return dict(csrf_token=generate_csrf)
+    # Make csrf_token available in all templates
+    @app.context_processor
+    def inject_csrf_token():
+        from flask_wtf.csrf import generate_csrf
+        return dict(csrf_token=generate_csrf)
+else:
+    # For serverless, provide a dummy csrf_token that always returns empty string
+    @app.context_processor
+    def inject_csrf_token():
+        return dict(csrf_token=lambda: '')
 
 # Initialize rate limiter
 limiter = Limiter(
