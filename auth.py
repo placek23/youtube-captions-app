@@ -37,7 +37,20 @@ def get_user(username):
     return users.get(username)
 
 def authenticate_user(username, password):
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"Authentication attempt for username: {username}")
     user = get_user(username)
-    if user and user.check_password(password):
+
+    if not user:
+        logger.warning(f"User not found: {username}")
+        logger.info(f"Available users: {list(_initialize_users().keys())}")
+        return None
+
+    if user.check_password(password):
+        logger.info(f"Password check successful for user: {username}")
         return user
-    return None
+    else:
+        logger.warning(f"Password check failed for user: {username}")
+        return None

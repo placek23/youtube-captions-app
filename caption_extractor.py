@@ -16,40 +16,64 @@ def extract_video_id(url):
     return None
 
 def get_captions(video_id, preferred_languages=['pl', 'en']):
-    """Fetches captions for a video ID, trying preferred languages."""
+    """
+    Fetches captions for a video ID, trying preferred languages.
+
+    Returns:
+        tuple: (captions_text, language_code) or (error_message, None) on failure
+    """
     # Validate video_id format
     if not video_id or not isinstance(video_id, str) or len(video_id) != 11:
-        return "Invalid YouTube video ID format."
+        return "Invalid YouTube video ID format.", None
 
     try:
         # Use the new API - direct fetch approach
         api = YouTubeTranscriptApi()
         transcript = api.fetch(video_id, preferred_languages)
 
+        # Try to get language code from transcript object
+        language_code = 'en'  # Default to English
+        if hasattr(transcript, 'language_code'):
+            language_code = transcript.language_code
+        elif hasattr(transcript, 'lang'):
+            language_code = transcript.lang
+        # If we requested Polish first and got a response, assume it's Polish
+        elif preferred_languages and preferred_languages[0] == 'pl':
+            # Check if content looks like Polish (has Polish-specific characters)
+            sample = ' '.join([s.text for s in transcript.snippets[:3]])
+            if any(char in sample for char in 'ąćęłńóśźżĄĆĘŁŃÓŚŹŻ'):
+                language_code = 'pl'
+
         # Process the transcript snippets
         processed_texts = [snippet.text.replace('\n', ' ') for snippet in transcript.snippets]
         result = ' '.join(processed_texts)
 
-        return result
+        return result, language_code
 
     except TranscriptsDisabled:
-        return "Transcripts are disabled for this video."
+        return "Transcripts are disabled for this video.", None
     except NoTranscriptFound:
         # Try to get any available transcript as fallback
         try:
             transcript = api.fetch(video_id)  # Default to English
+            language_code = 'en'
+            if hasattr(transcript, 'language_code'):
+                language_code = transcript.language_code
+            elif hasattr(transcript, 'lang'):
+                language_code = transcript.lang
+
             processed_texts = [snippet.text.replace('\n', ' ') for snippet in transcript.snippets]
             result = ' '.join(processed_texts)
-            return result
+            return result, language_code
 
         except Exception:
-            return f"No transcripts found in the preferred languages: {', '.join(preferred_languages)}."
+            return f"No transcripts found in the preferred languages: {', '.join(preferred_languages)}.", None
 
     except Exception as e:
         error_msg = str(e).lower()
         if "no element found" in error_msg or "xml" in error_msg or "parseerror" in error_msg:
-            return "Video not found or captions are not available. Please check if the video exists and has captions enabled."
-        return f"Could not retrieve transcript: {e}"
+            return "Video not found or captions are not available. Please check if the video exists and has captions enabled.", None
+        return f"Could not retrieve transcript: {e}", None
 
 if __name__ == "__main__":
     video_url = input("Enter the YouTube video URL: ")

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Videos - YouTube Caption Summarizer{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/videos.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Video Library</h1>
+    <p>Browse and search video summaries from your subscribed channels</p>
+</div>
+
+<!-- Filters section -->
+<div class="filters-section">
+    <div class="filter-group">
+        <label for="channelFilter">Filter by Channel:</label>
+        <select id="channelFilter">
+            <option value="">All Channels</option>
+        </select>
+    </div>
+
+    <div class="filter-group">
+        <label for="sortOrder">Sort by:</label>
+        <select id="sortOrder">
+            <option value="published_at_desc">Newest First</option>
+            <option value="published_at_asc">Oldest First</option>
+            <option value="title_asc">Title (A-Z)</option>
+            <option value="title_desc">Title (Z-A)</option>
+        </select>
+    </div>
+</div>
+
+<!-- Videos grid -->
+<div id="videosContainer">
+    <div class="loading">
+        <div class="spinner"></div>
+        <p>Loading videos...</p>
+    </div>
+</div>
+
+<!-- Pagination -->
+<div id="paginationContainer"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/videos.js') }}"></script>
+{% endblock %}
