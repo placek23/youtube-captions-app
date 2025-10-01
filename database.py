@@ -5,10 +5,12 @@ This module handles database connections optimized for serverless environments.
 """
 
 import os
+import time
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import NullPool, QueuePool
+from sqlalchemy.exc import OperationalError, DBAPIError
 from contextlib import contextmanager
 import logging
 
@@ -20,26 +22,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database connection configuration
-DATABASE_URL = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
+# Priority: POSTGRES_PRISMA_URL (pgBouncer) > DATABASE_URL > POSTGRES_URL
+DATABASE_URL = (
+    os.getenv('POSTGRES_PRISMA_URL') or
+    os.getenv('DATABASE_URL') or
+    os.getenv('POSTGRES_URL')
+)
 
 if not DATABASE_URL:
     raise ValueError(
-        "Database URL not found! Please set DATABASE_URL or POSTGRES_URL environment variable.\n"
+        "Database URL not found! Please set one of the following environment variables:\n"
+        "  - POSTGRES_PRISMA_URL (recommended for Vercel - pgBouncer connection pooling)\n"
+        "  - DATABASE_URL\n"
+        "  - POSTGRES_URL\n"
         "For Vercel Postgres, these variables are automatically set when you connect a database."
     )
 
+# Log which connection string is being used (without exposing credentials)
+if os.getenv('POSTGRES_PRISMA_URL'):
+    logger.info("Using POSTGRES_PRISMA_URL (pgBouncer connection pooling)")
+elif os.getenv('DATABASE_URL'):
+    logger.info("Using DATABASE_URL")
+else:
+    logger.info("Using POSTGRES_URL")
+
+# Serverless connection configuration
+# Detect if running in Vercel environment
+IS_VERCEL = os.getenv('VERCEL') == '1'
+
+# Connection retry configuration
+MAX_RETRIES = 3
+RETRY_DELAY = 0.5  # seconds
+
 # Vercel Postgres (Neon) connection optimization
 # Use NullPool for serverless to avoid connection pooling issues
-# Connection pooling is handled by Vercel/Neon's pgBouncer
+# Connection pooling is handled by Vercel/Neon's pgBouncer (when using POSTGRES_PRISMA_URL)
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,  # No connection pooling for serverless
     echo=False,  # Set to True for SQL query debugging
     connect_args={
         'connect_timeout': 10,  # 10 second connection timeout
-        'options': '-c timezone=utc'  # Use UTC timezone
+        'options': '-c timezone=utc',  # Use UTC timezone
+        'keepalives': 1,  # Enable TCP keepalives
+        'keepalives_idle': 30,  # Seconds before sending keepalive probes
+        'keepalives_interval': 10,  # Seconds between keepalive probes
+        'keepalives_count': 5  # Number of keepalive probes before connection is considered dead
     }
 )
+
+if IS_VERCEL:
+    logger.info("Running in Vercel serverless environment")
 
 # Alternative configuration with connection pooling (uncomment if needed for local dev)
 # engine = create_engine(
@@ -57,6 +90,31 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Scoped session for thread-safe access
 ScopedSession = scoped_session(SessionLocal)
+
+
+def retry_on_db_error(func):
+    """
+    Decorator to retry database operations on connection errors.
+    Useful for handling cold starts and transient connection issues.
+    """
+    def wrapper(*args, **kwargs):
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                return func(*args, **kwargs)
+            except (OperationalError, DBAPIError) as e:
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    wait_time = RETRY_DELAY * (2 ** attempt)  # Exponential backoff
+                    logger.warning(
+                        f"Database operation failed (attempt {attempt + 1}/{MAX_RETRIES}). "
+                        f"Retrying in {wait_time}s... Error: {e}"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Database operation failed after {MAX_RETRIES} attempts: {e}")
+        raise last_error
+    return wrapper
 
 
 def get_db():
@@ -105,9 +163,13 @@ def get_db_session():
         session.close()
 
 
+@retry_on_db_error
 def test_connection():
     """
-    Test database connection.
+    Test database connection with retry logic.
+
+    This function is decorated with retry logic to handle cold starts
+    and transient connection issues in serverless environments.
 
     Returns:
         bool: True if connection successful, False otherwise.
@@ -121,7 +183,7 @@ def test_connection():
             return True
     except Exception as e:
         logger.error(f"✗ Database connection failed: {e}")
-        return False
+        raise  # Re-raise to allow retry decorator to work
 
 
 def get_database_info():
@@ -193,5 +255,6 @@ __all__ = [
     'get_db_session',
     'test_connection',
     'get_database_info',
-    'close_db_connection'
+    'close_db_connection',
+    'retry_on_db_error'
 ]

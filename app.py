@@ -17,9 +17,26 @@ from video_processor import process_single_video, process_pending_videos, get_pr
 from models import Video, Channel, ProcessingStatus
 from database import get_db_session
 from sqlalchemy import desc
+from validators import (
+    validate_youtube_video_url,
+    validate_youtube_channel_url,
+    validate_pagination_params,
+    validate_max_videos,
+    sanitize_text,
+    validate_integer_id,
+    MAX_VIDEOS_BATCH_PROCESS
+)
+from startup_validator import run_startup_validation
 
 # Load environment variables from .env file
 load_dotenv(override=True)
+
+# Run startup validation to ensure all required environment variables are present
+try:
+    run_startup_validation(strict=True)
+except Exception as e:
+    logging.error(f"Startup validation failed: {e}")
+    raise
 
 # Configure logging
 logging.basicConfig(
@@ -185,35 +202,23 @@ def get_captions_route():
     """API endpoint to fetch captions for a given YouTube URL."""
     data = request.get_json()
     video_url = data.get('video_url')
+
     if not video_url:
         return jsonify({'error': 'Video URL is required.'}), 400
 
+    # Validate YouTube URL and extract video ID
+    is_valid, video_id, error = validate_youtube_video_url(video_url)
+    if not is_valid:
+        logger.warning(f"Invalid YouTube URL: {video_url} - {error}")
+        return jsonify({'error': error}), 400
+
     try:
-        # Extract video ID from URL
-        parsed_url = urlparse(video_url)
-        if 'youtube.com' in parsed_url.netloc or 'youtu.be' in parsed_url.netloc:
-            if parsed_url.path == '/watch':
-                video_id = parse_qs(parsed_url.query).get('v')
-                if video_id:
-                    video_id = video_id[0]
-                else:
-                    return jsonify({'error': 'Invalid YouTube URL: Missing video ID.'}), 400
-            elif parsed_url.path.startswith('/'): # handles youtu.be/VIDEO_ID format
-                video_id = parsed_url.path[1:]
-            else:
-                 return jsonify({'error': 'Invalid YouTube URL format.'}), 400
-        else:
-            return jsonify({'error': 'Not a valid YouTube URL.'}), 400
-
-        if not video_id:
-            return jsonify({'error': 'Could not extract video ID from URL.'}), 400
-
-        captions = get_captions(video_id) # Pass video_id instead of full URL
+        captions = get_captions(video_id)
         if not captions:
             return jsonify({'error': 'Could not retrieve captions for this video. It might be unavailable or private.'}), 404
         return jsonify({'captions': captions})
     except Exception as e:
-        logger.error(f"Error getting captions: {e}")
+        logger.error(f"Error getting captions for video {video_id}: {e}", exc_info=True)
         return jsonify({'error': 'An internal error occurred while fetching captions.'}), 500
 
 @app.route('/summarize', methods=['POST'])
@@ -264,12 +269,20 @@ def add_channel_route():
     if not channel_url:
         return jsonify({'error': 'Channel URL is required'}), 400
 
+    # Validate channel URL format
+    is_valid, error = validate_youtube_channel_url(channel_url)
+    if not is_valid:
+        logger.warning(f"Invalid channel URL: {channel_url} - {error}")
+        return jsonify({'error': error}), 400
+
     try:
         channel, error = add_channel(channel_url)
 
         if error:
+            logger.warning(f"Failed to add channel {channel_url}: {error}")
             return jsonify({'error': error}), 400
 
+        logger.info(f"Successfully added channel: {channel.channel_name} ({channel.channel_id})")
         return jsonify({
             'success': True,
             'channel': channel.to_dict(),
@@ -277,8 +290,8 @@ def add_channel_route():
         }), 201
 
     except Exception as e:
-        logger.error(f"Error adding channel: {e}")
-        return jsonify({'error': 'Failed to add channel'}), 500
+        logger.error(f"Error adding channel {channel_url}: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to add channel. Please try again later.'}), 500
 
 
 @app.route('/api/channels/<int:channel_id>', methods=['DELETE'])
@@ -286,20 +299,27 @@ def add_channel_route():
 @limiter.limit("10 per minute")
 def delete_channel_route(channel_id):
     """Delete a channel subscription."""
+    # Validate channel ID
+    is_valid, sanitized_id, error = validate_integer_id(channel_id, "Channel ID")
+    if not is_valid:
+        return jsonify({'error': error}), 400
+
     try:
-        success, error = delete_channel(channel_id)
+        success, error = delete_channel(sanitized_id)
 
         if not success:
+            logger.warning(f"Failed to delete channel {sanitized_id}: {error}")
             return jsonify({'error': error}), 404
 
+        logger.info(f"Successfully deleted channel ID: {sanitized_id}")
         return jsonify({
             'success': True,
             'message': 'Channel deleted successfully'
         })
 
     except Exception as e:
-        logger.error(f"Error deleting channel: {e}")
-        return jsonify({'error': 'Failed to delete channel'}), 500
+        logger.error(f"Error deleting channel {sanitized_id}: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to delete channel. Please try again later.'}), 500
 
 
 @app.route('/api/sync/channel/<int:channel_id>', methods=['POST'])
@@ -307,10 +327,20 @@ def delete_channel_route(channel_id):
 @limiter.limit("5 per minute")
 def sync_channel_route(channel_id):
     """Manually trigger video sync for a specific channel."""
+    # Validate channel ID
+    is_valid, sanitized_id, error = validate_integer_id(channel_id, "Channel ID")
+    if not is_valid:
+        return jsonify({'error': error}), 400
+
     try:
         max_videos = request.get_json().get('max_videos', 50) if request.is_json else 50
 
-        new_count, skipped_count, error = sync_channel_videos(channel_id, max_videos)
+        # Validate max_videos
+        is_valid, max_videos, error = validate_max_videos(max_videos, max_allowed=50)
+        if not is_valid:
+            return jsonify({'error': error}), 400
+
+        new_count, skipped_count, error = sync_channel_videos(sanitized_id, max_videos)
 
         if error:
             return jsonify({'error': error}), 400
@@ -342,9 +372,16 @@ def get_videos():
         channel_id = request.args.get('channel_id', type=int)
         order_by = request.args.get('order_by', 'published_at_desc', type=str)
 
-        # Limit per_page to prevent abuse
-        per_page = min(per_page, 50)
-        page = max(page, 1)
+        # Validate and sanitize pagination parameters
+        is_valid, page, per_page, error = validate_pagination_params(page, per_page)
+        if not is_valid:
+            return jsonify({'error': error}), 400
+
+        # Validate channel_id if provided
+        if channel_id is not None:
+            is_valid, channel_id, error = validate_integer_id(channel_id, "Channel ID")
+            if not is_valid:
+                return jsonify({'error': error}), 400
 
         with get_db_session() as session:
             # Base query with eager loading of channel relationship
@@ -596,7 +633,11 @@ def process_pending_route():
     """Process pending videos in batch."""
     try:
         max_videos = request.get_json().get('max_videos', 10) if request.is_json else 10
-        max_videos = min(max_videos, 20)  # Limit to prevent timeout
+
+        # Validate max_videos (limit to MAX_VIDEOS_BATCH_PROCESS to prevent timeout)
+        is_valid, max_videos, error = validate_max_videos(max_videos, max_allowed=MAX_VIDEOS_BATCH_PROCESS)
+        if not is_valid:
+            return jsonify({'error': error}), 400
 
         stats = process_pending_videos(max_videos)
 
