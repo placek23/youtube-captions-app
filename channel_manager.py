@@ -262,6 +262,12 @@ def add_channel(url: str) -> tuple[Optional[Channel], Optional[str]]:
             )
             session.add(new_channel)
             session.commit()
+            session.refresh(new_channel)  # Ensure ID is loaded
+
+            # Force load the videos relationship (will be empty for new channel)
+            _ = len(new_channel.videos)
+
+            session.expunge(new_channel)  # Detach from session
 
             logger.info(f"Added channel: {metadata['channel_name']} ({channel_id})")
             return new_channel, None
@@ -283,6 +289,11 @@ def get_all_channels() -> List[Channel]:
     try:
         with get_db_session() as session:
             channels = session.query(Channel).order_by(Channel.channel_name).all()
+
+            # Load video counts before expunging
+            for channel in channels:
+                _ = len(channel.videos)  # Trigger lazy load
+
             # Detach from session to avoid lazy loading issues
             session.expunge_all()
             return channels

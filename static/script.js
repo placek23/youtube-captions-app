@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const getCaptionsBtn = document.getElementById('get-captions-btn');
     const summarizeBtn = document.getElementById('summarize-btn');
+    const saveToDbBtn = document.getElementById('save-to-db-btn');
     const videoUrlInput = document.getElementById('video-url');
     const captionsOutput = document.getElementById('captions-output');
     const summaryOutput = document.getElementById('summary-output');
@@ -8,10 +9,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorDiv = document.getElementById('error');
     const copyCaptionsBtn = document.getElementById('copy-captions-btn');
 
+    // Store video data for saving
+    let videoData = {
+        video_id: '',
+        title: '',
+        video_url: '',
+        caption_text: '',
+        short_summary: '',
+        detailed_summary: ''
+    };
+
     // Get CSRF token from meta tag (returns empty string if not present for serverless)
     function getCsrfToken() {
         const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         return token;
+    }
+
+    // Extract video ID from YouTube URL
+    function extractVideoId(url) {
+        const urlObj = new URL(url);
+        if (urlObj.hostname.includes('youtube.com')) {
+            return urlObj.searchParams.get('v');
+        } else if (urlObj.hostname.includes('youtu.be')) {
+            return urlObj.pathname.substring(1);
+        }
+        return null;
     }
 
     getCaptionsBtn.addEventListener('click', async () => {
@@ -39,6 +61,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 captionsOutput.value = data.captions;
                 summarizeBtn.classList.remove('hidden');
+
+                // Store video data
+                videoData.video_url = videoUrl;
+                videoData.video_id = data.video_id || extractVideoId(videoUrl);
+                videoData.title = data.title || 'YouTube Video';
+                videoData.caption_text = data.captions;
             } else {
                 showError(data.error || 'An unknown error occurred.');
             }
@@ -78,6 +106,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rawHtml = marked.parse(data.summary);
                 const cleanHtml = DOMPurify.sanitize(rawHtml);
                 summaryOutput.innerHTML = cleanHtml;
+
+                // Store summary data (treat the summary as detailed_summary)
+                videoData.detailed_summary = data.summary;
+                videoData.short_summary = data.summary.substring(0, 500) + '...'; // First 500 chars as short
+
+                // Show save button
+                if (saveToDbBtn) {
+                    saveToDbBtn.classList.remove('hidden');
+                }
             } else {
                 showError(data.error || 'An unknown error occurred during summarization.');
             }
@@ -88,6 +125,51 @@ document.addEventListener('DOMContentLoaded', () => {
             showLoading(false);
         }
     });
+
+    if (saveToDbBtn) {
+        saveToDbBtn.addEventListener('click', async () => {
+            // Validate that we have all required data
+            if (!videoData.video_id || !videoData.title || !videoData.video_url) {
+                showError('Missing video information. Please fetch captions first.');
+                return;
+            }
+
+            showLoading(true);
+            errorDiv.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/save_video', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    body: JSON.stringify(videoData),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Redirect to video detail page
+                    window.location.href = `/video/${videoData.video_id}`;
+                } else if (response.status === 409) {
+                    // Video already exists
+                    showError('This video is already in the database.');
+                    // Optionally redirect to the existing video
+                    setTimeout(() => {
+                        window.location.href = `/video/${videoData.video_id}`;
+                    }, 2000);
+                } else {
+                    showError(data.error || 'Failed to save video to database.');
+                }
+            } catch (error) {
+                showError('Failed to save video. Check the console for details.');
+                console.error('Error saving video:', error);
+            } finally {
+                showLoading(false);
+            }
+        });
+    }
 
     if (copyCaptionsBtn) {
         copyCaptionsBtn.addEventListener('click', () => {
@@ -115,7 +197,19 @@ document.addEventListener('DOMContentLoaded', () => {
         captionsOutput.value = '';
         summaryOutput.innerHTML = '';
         summarizeBtn.classList.add('hidden');
+        if (saveToDbBtn) {
+            saveToDbBtn.classList.add('hidden');
+        }
         errorDiv.classList.add('hidden');
+        // Reset video data
+        videoData = {
+            video_id: '',
+            title: '',
+            video_url: '',
+            caption_text: '',
+            short_summary: '',
+            detailed_summary: ''
+        };
     }
 
     function showLoading(isLoading) {

@@ -6,7 +6,7 @@ Fetches videos from subscribed YouTube channels and stores them in the database.
 
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -43,7 +43,7 @@ def get_youtube_client():
 
 def fetch_channel_videos(channel_id: str, max_results: int = DEFAULT_MAX_RESULTS) -> List[Dict]:
     """
-    Fetch latest videos from a YouTube channel.
+    Fetch latest videos from a YouTube channel (from last 3 days only).
 
     Args:
         channel_id: YouTube channel ID.
@@ -56,6 +56,10 @@ def fetch_channel_videos(channel_id: str, max_results: int = DEFAULT_MAX_RESULTS
 
     try:
         youtube = get_youtube_client()
+
+        # Calculate 3 days ago threshold (timezone-aware)
+        from datetime import timezone
+        three_days_ago = datetime.now(timezone.utc) - timedelta(days=3)
 
         # Get uploads playlist ID
         channel_request = youtube.channels().list(
@@ -73,8 +77,9 @@ def fetch_channel_videos(channel_id: str, max_results: int = DEFAULT_MAX_RESULTS
         # Fetch videos from uploads playlist
         next_page_token = None
         fetched_count = 0
+        should_continue = True
 
-        while fetched_count < max_results:
+        while should_continue and fetched_count < max_results:
             playlist_request = youtube.playlistItems().list(
                 part='snippet,contentDetails',
                 playlistId=uploads_playlist_id,
@@ -93,6 +98,14 @@ def fetch_channel_videos(channel_id: str, max_results: int = DEFAULT_MAX_RESULTS
                     published_at = datetime.fromisoformat(snippet['publishedAt'].replace('Z', '+00:00'))
                 except Exception as e:
                     logger.warning(f"Failed to parse date for video {video_id}: {e}")
+                    continue
+
+                # Filter: Only include videos from last 3 days
+                if published_at and published_at < three_days_ago:
+                    # Videos are ordered by date (newest first), so we can stop here
+                    logger.info(f"Reached videos older than 3 days, stopping fetch")
+                    should_continue = False
+                    break
 
                 video_data = {
                     'video_id': video_id,
@@ -109,7 +122,7 @@ def fetch_channel_videos(channel_id: str, max_results: int = DEFAULT_MAX_RESULTS
             if not next_page_token or fetched_count >= max_results:
                 break
 
-        logger.info(f"Fetched {len(videos)} videos from channel {channel_id}")
+        logger.info(f"Fetched {len(videos)} videos from channel {channel_id} (last 3 days)")
         return videos
 
     except HttpError as e:

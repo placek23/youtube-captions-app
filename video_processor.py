@@ -44,11 +44,21 @@ def process_single_video(video_db_id: int) -> tuple[bool, Optional[str]]:
 
         # Step 1: Extract captions
         logger.info(f"  Step 1/3: Extracting captions for {video_id}")
-        captions = get_captions(video_id, preferred_languages=['pl', 'en'])
+        captions, language_code = get_captions(video_id, preferred_languages=['pl', 'en'])
 
-        # Check if caption extraction failed
-        if not captions or "error" in captions.lower() or "could not" in captions.lower() or "disabled" in captions.lower():
-            logger.warning(f"  Caption extraction failed for {video_id}: {captions[:100]}")
+        # Check if caption extraction failed - look for specific error message patterns
+        error_patterns = [
+            "Invalid YouTube video ID",
+            "Transcripts are disabled",
+            "No transcripts found",
+            "Video not found or captions are not available",
+            "Could not retrieve transcript:"
+        ]
+
+        is_error = not captions or language_code is None or any(captions.startswith(pattern) for pattern in error_patterns)
+
+        if is_error:
+            logger.warning(f"  Caption extraction failed for {video_id}: {captions[:100] if captions else 'Empty response'}")
             with get_db_session() as session:
                 video = session.query(Video).filter_by(id=video_db_id).first()
                 video.processing_status = ProcessingStatus.FAILED
@@ -56,12 +66,12 @@ def process_single_video(video_db_id: int) -> tuple[bool, Optional[str]]:
                 session.commit()
             return False, f"Caption extraction failed: {captions}"
 
-        logger.info(f"  Extracted {len(captions)} characters of captions")
+        logger.info(f"  Extracted {len(captions)} characters of captions (language: {language_code})")
 
         # Step 2: Generate short summary
         logger.info(f"  Step 2/3: Generating short summary for {video_id}")
         try:
-            short_summary = generate_short_summary(captions)
+            short_summary = generate_short_summary(captions, language_code)
             logger.info(f"  Generated short summary ({len(short_summary)} chars)")
         except Exception as e:
             logger.error(f"  Short summary generation failed: {e}")
@@ -70,7 +80,7 @@ def process_single_video(video_db_id: int) -> tuple[bool, Optional[str]]:
         # Step 3: Generate detailed summary
         logger.info(f"  Step 3/3: Generating detailed summary for {video_id}")
         try:
-            detailed_summary = generate_detailed_summary(captions)
+            detailed_summary = generate_detailed_summary(captions, language_code)
             logger.info(f"  Generated detailed summary ({len(detailed_summary)} chars)")
         except Exception as e:
             logger.error(f"  Detailed summary generation failed: {e}")

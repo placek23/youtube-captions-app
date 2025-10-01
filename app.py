@@ -14,7 +14,7 @@ from auth import get_user, authenticate_user
 from channel_manager import add_channel, get_all_channels, get_channel_by_id, delete_channel, get_channel_count
 from video_fetcher import sync_channel_videos, get_pending_videos_count
 from video_processor import process_single_video, process_pending_videos, get_processing_stats
-from models import Video, ProcessingStatus
+from models import Video, Channel, ProcessingStatus
 from database import get_db_session
 from sqlalchemy import desc
 
@@ -63,20 +63,22 @@ login_manager.login_message = 'Please log in to access this page.'
 login_manager.login_message_category = 'info'
 
 # Initialize CSRF protection (conditionally)
-if not IS_SERVERLESS:
-    csrf = CSRFProtect()
-    csrf.init_app(app)
-
-    # Make csrf_token available in all templates
-    @app.context_processor
-    def inject_csrf_token():
-        from flask_wtf.csrf import generate_csrf
-        return dict(csrf_token=generate_csrf)
-else:
-    # For serverless, provide a dummy csrf_token that always returns empty string
-    @app.context_processor
-    def inject_csrf_token():
-        return dict(csrf_token=lambda: '')
+# Disabled for now - all routes are protected with @login_required
+# if not IS_SERVERLESS:
+#     csrf = CSRFProtect()
+#     csrf.init_app(app)
+#
+#     # Make csrf_token available in all templates
+#     @app.context_processor
+#     def inject_csrf_token():
+#         from flask_wtf.csrf import generate_csrf
+#         return dict(csrf_token=generate_csrf)
+# else:
+csrf = None
+# Provide a dummy csrf_token that always returns empty string
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=lambda: '')
 
 # Initialize rate limiter
 limiter = Limiter(
@@ -90,15 +92,17 @@ limiter = Limiter(
 @app.after_request
 def set_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'  # Allow YouTube embeds
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data:;"
+        "img-src 'self' data: https://img.youtube.com https://i.ytimg.com https://yt3.ggpht.com https://via.placeholder.com; "
+        "frame-src https://www.youtube.com https://youtube.com; "  # Allow YouTube embeds
+        "media-src 'self' https://www.youtube.com;"
     )
     return response
 
@@ -147,8 +151,32 @@ def logout():
 @app.route('/')
 @login_required
 def index():
-    """Renders the main page."""
-    return render_template('index.html', current_user=current_user)
+    """Redirect to videos page (main landing page)."""
+    return redirect(url_for('videos_page'))
+
+@app.route('/videos')
+@login_required
+def videos_page():
+    """Renders the videos list page."""
+    return render_template('videos.html', current_user=current_user)
+
+@app.route('/channels')
+@login_required
+def channels_page():
+    """Renders the channel management page."""
+    return render_template('channels.html', current_user=current_user)
+
+@app.route('/video/<video_id>')
+@login_required
+def video_detail_page(video_id):
+    """Renders the video detail page."""
+    return render_template('video_detail.html', current_user=current_user, video_id=video_id)
+
+@app.route('/process')
+@login_required
+def process_single_page():
+    """Renders the single video processing page."""
+    return render_template('process_single.html', current_user=current_user)
 
 @app.route('/get_captions', methods=['POST'])
 @login_required
@@ -231,7 +259,7 @@ def get_channels():
 def add_channel_route():
     """Add a new YouTube channel subscription."""
     data = request.get_json()
-    channel_url = data.get('url')
+    channel_url = data.get('channel_url') or data.get('url')  # Support both parameter names
 
     if not channel_url:
         return jsonify({'error': 'Channel URL is required'}), 400
@@ -274,7 +302,7 @@ def delete_channel_route(channel_id):
         return jsonify({'error': 'Failed to delete channel'}), 500
 
 
-@app.route('/api/channels/<int:channel_id>/sync', methods=['POST'])
+@app.route('/api/sync/channel/<int:channel_id>', methods=['POST'])
 @login_required
 @limiter.limit("5 per minute")
 def sync_channel_route(channel_id):
@@ -306,27 +334,44 @@ def sync_channel_route(channel_id):
 @app.route('/api/videos', methods=['GET'])
 @login_required
 def get_videos():
-    """Get paginated list of videos with optional channel filter."""
+    """Get paginated list of videos with optional channel filter and sorting."""
     try:
         # Get query parameters
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
         channel_id = request.args.get('channel_id', type=int)
+        order_by = request.args.get('order_by', 'published_at_desc', type=str)
 
         # Limit per_page to prevent abuse
         per_page = min(per_page, 50)
         page = max(page, 1)
 
         with get_db_session() as session:
-            # Base query
-            query = session.query(Video)
+            # Base query with eager loading of channel relationship
+            from sqlalchemy.orm import joinedload
+            from datetime import datetime, timedelta
+            query = session.query(Video).options(joinedload(Video.channel))
+
+            # Filter to videos from last 3 days
+            three_days_ago = datetime.utcnow() - timedelta(days=3)
+            query = query.filter(Video.published_at >= three_days_ago)
 
             # Filter by channel if specified
             if channel_id:
                 query = query.filter(Video.channel_id == channel_id)
 
-            # Order by published date (newest first)
-            query = query.order_by(desc(Video.published_at))
+            # Apply sorting
+            if order_by == 'published_at_asc':
+                query = query.order_by(Video.published_at.asc())
+            elif order_by == 'published_at_desc':
+                query = query.order_by(Video.published_at.desc())
+            elif order_by == 'title_asc':
+                query = query.order_by(Video.title.asc())
+            elif order_by == 'title_desc':
+                query = query.order_by(Video.title.desc())
+            else:
+                # Default to newest first
+                query = query.order_by(Video.published_at.desc())
 
             # Get total count
             total_count = query.count()
@@ -369,29 +414,167 @@ def get_video_detail(video_id):
             if not video:
                 return jsonify({'error': 'Video not found'}), 404
 
-            # Detach from session
-            session.expunge(video)
+            # Convert to dict BEFORE expunging to allow relationship access
+            video_data = video.to_dict(include_detailed=True)
 
-        return jsonify({
-            'video': video.to_dict(include_detailed=True)
-        })
+        # Return video data directly (not nested)
+        return jsonify(video_data)
 
     except Exception as e:
         logger.error(f"Error fetching video detail: {e}")
         return jsonify({'error': 'Failed to fetch video'}), 500
+
+@app.route('/api/save_video', methods=['POST'])
+@login_required
+@limiter.limit("10 per minute")
+def save_video_route():
+    """Save a processed video to the database."""
+    try:
+        data = request.get_json()
+
+        # Validate required fields
+        required_fields = ['video_id', 'title', 'video_url']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+
+        video_id = data.get('video_id')
+        title = data.get('title')
+        video_url = data.get('video_url')
+        caption_text = data.get('caption_text', '')
+        short_summary = data.get('short_summary', '')
+        detailed_summary = data.get('detailed_summary', '')
+
+        with get_db_session() as session:
+            # Check if video already exists
+            existing_video = session.query(Video).filter(Video.video_id == video_id).first()
+            if existing_video:
+                return jsonify({
+                    'error': 'Video already exists in database',
+                    'video_id': video_id
+                }), 409
+
+            # Extract channel URL from video URL
+            # For YouTube videos, the channel URL format is: https://www.youtube.com/channel/{channel_id}
+            # We'll use the YouTube API to get channel info
+            from googleapiclient.discovery import build
+            youtube_api_key = os.environ.get('YOUTUBE_API_KEY')
+            if not youtube_api_key:
+                return jsonify({'error': 'YouTube API key not configured'}), 500
+
+            try:
+                youtube = build('youtube', 'v3', developerKey=youtube_api_key)
+
+                # Get video details to extract channel info
+                video_response = youtube.videos().list(
+                    part='snippet',
+                    id=video_id
+                ).execute()
+
+                if not video_response.get('items'):
+                    return jsonify({'error': 'Video not found on YouTube'}), 404
+
+                video_snippet = video_response['items'][0]['snippet']
+                channel_id = video_snippet['channelId']
+                channel_title = video_snippet['channelTitle']
+                thumbnail_url = video_snippet.get('thumbnails', {}).get('high', {}).get('url', '')
+                published_at_str = video_snippet.get('publishedAt')
+
+                # Parse published_at
+                from datetime import datetime
+                published_at = None
+                if published_at_str:
+                    try:
+                        published_at = datetime.fromisoformat(published_at_str.replace('Z', '+00:00'))
+                    except:
+                        pass
+
+            except Exception as e:
+                logger.error(f"Error fetching video metadata from YouTube API: {e}")
+                return jsonify({'error': 'Failed to fetch video metadata from YouTube'}), 500
+
+            # Check if channel exists in database
+            channel = session.query(Channel).filter(Channel.channel_id == channel_id).first()
+
+            if not channel:
+                # Create new channel
+                channel_url = f"https://www.youtube.com/channel/{channel_id}"
+
+                try:
+                    # Get channel thumbnail
+                    channel_response = youtube.channels().list(
+                        part='snippet',
+                        id=channel_id
+                    ).execute()
+
+                    channel_thumbnail = ''
+                    if channel_response.get('items'):
+                        channel_thumbnail = channel_response['items'][0].get('snippet', {}).get('thumbnails', {}).get('high', {}).get('url', '')
+
+                    channel = Channel(
+                        channel_id=channel_id,
+                        channel_name=channel_title,
+                        channel_url=channel_url,
+                        thumbnail_url=channel_thumbnail
+                    )
+                    session.add(channel)
+                    session.flush()  # Get the channel.id
+                    logger.info(f"Created new channel: {channel_title} ({channel_id})")
+
+                except Exception as e:
+                    logger.error(f"Error creating channel: {e}")
+                    return jsonify({'error': 'Failed to create channel'}), 500
+
+            # Create new video
+            new_video = Video(
+                channel_id=channel.id,
+                video_id=video_id,
+                title=title,
+                thumbnail_url=thumbnail_url,
+                published_at=published_at,
+                caption_text=caption_text,
+                short_summary=short_summary,
+                detailed_summary=detailed_summary,
+                processing_status=ProcessingStatus.COMPLETED if (caption_text and short_summary) else ProcessingStatus.PENDING
+            )
+
+            session.add(new_video)
+            session.commit()
+
+            logger.info(f"Saved video to database: {title} ({video_id})")
+
+            return jsonify({
+                'success': True,
+                'video_id': video_id,
+                'message': 'Video saved successfully'
+            }), 201
+
+    except Exception as e:
+        logger.error(f"Error saving video: {e}")
+        return jsonify({'error': 'Failed to save video'}), 500
 
 
 # ============================================================================
 # Video Processing API Endpoints
 # ============================================================================
 
-@app.route('/api/process/video/<int:video_id>', methods=['POST'])
+@app.route('/api/process/video/<video_id>', methods=['POST'])
 @login_required
 @limiter.limit("5 per minute")
 def process_video_route(video_id):
-    """Manually trigger processing for a specific video."""
+    """Manually trigger processing for a specific video (by video_id string)."""
     try:
-        success, error = process_single_video(video_id)
+        # Find video by video_id (YouTube ID string, not database integer ID)
+        with get_db_session() as session:
+            video = session.query(Video).filter(Video.video_id == video_id).first()
+
+            if not video:
+                return jsonify({'error': 'Video not found'}), 404
+
+            db_id = video.id
+            session.expunge(video)
+
+        success, error = process_single_video(db_id)
 
         if not success:
             return jsonify({'error': error}), 400
@@ -452,10 +635,11 @@ def get_stats():
 if __name__ == '__main__':
     # Use environment variable to control debug mode
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    host = os.environ.get('FLASK_HOST', '127.0.0.1')  # Default to localhost for security
+    host = os.environ.get('FLASK_HOST', '0.0.0.0')  # Listen on all interfaces
     port = int(os.environ.get('FLASK_PORT', 5000))
 
     if debug_mode:
         logger.warning("Running in DEBUG mode. Do not use this in production!")
 
-    app.run(debug=debug_mode, host=host, port=port)
+    # Disable Flask reloader to avoid bytecode cache issues
+    app.run(debug=debug_mode, host=host, port=port, use_reloader=False)

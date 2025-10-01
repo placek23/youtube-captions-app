@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Process Single Video - YouTube Caption Summarizer{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+    /* Additional styles for single video processing */
+    .csrf-meta {
+        display: none;
+    }
+</style>
+<!-- DOMPurify for XSS protection -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<meta name="csrf-token" content="{{ csrf_token }}" class="csrf-meta">
+
+<div class="container">
+    <h1>Process Single Video</h1>
+    <p style="color: #7f8c8d; margin-bottom: 2rem;">
+        Extract captions and generate AI summaries for any YouTube video
+    </p>
+
+    <div class="input-group">
+        <input type="text" id="video-url" placeholder="Enter YouTube Video URL">
+        <button id="get-captions-btn" class="btn">Get Captions</button>
+    </div>
+
+    <div id="loading" class="hidden">Loading...</div>
+    <div id="error" class="hidden"></div>
+
+    <div class="output-container">
+        <div class="captions-section">
+            <h2>Captions</h2>
+            <textarea id="captions-output" readonly></textarea>
+            <button id="copy-captions-btn" class="btn">Copy Captions</button>
+            <button id="summarize-btn" class="btn hidden">Summarize Captions</button>
+            <button id="save-to-db-btn" class="btn hidden">Save to Database</button>
+            <div class="summary-section">
+                <h2>Summary</h2>
+                <div id="summary-output"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+{% endblock %}

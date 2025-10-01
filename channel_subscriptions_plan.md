@@ -88,108 +88,112 @@
 ---
 
 ## Phase 4: Backend API Endpoints
-- [ ] Add channel management endpoints to `app.py`
-  - [ ] `GET /api/channels` - List all subscribed channels
-  - [ ] `POST /api/channels` - Add new channel (validate + fetch metadata)
-  - [ ] `DELETE /api/channels/<id>` - Remove channel
-  - [ ] Protect all endpoints with `@login_required`
-  - [ ] Add input validation
-  - [ ] Add error handling and JSON responses
-- [ ] Add video listing endpoints to `app.py`
-  - [ ] `GET /api/videos` - Paginated video list
-    - [ ] Support `page` parameter (default: 1)
-    - [ ] Support `per_page` parameter (default: 20, max: 50)
-    - [ ] Support `channel_id` filter parameter
-    - [ ] Support `order_by` parameter (default: published_at DESC)
-  - [ ] Return pagination metadata (total_count, page, per_page)
-  - [ ] Protect with `@login_required`
-- [ ] Add video detail endpoint to `app.py`
-  - [ ] `GET /api/videos/<video_id>` - Full video details with detailed_summary
-  - [ ] Protect with `@login_required`
-  - [ ] Handle video not found (404)
-- [ ] Add manual processing endpoints to `app.py`
-  - [ ] `POST /api/sync/channel/<channel_id>` - Fetch new videos from channel
-  - [ ] `POST /api/process/video/<video_id>` - Process single video (captions + summaries)
-  - [ ] `POST /api/process/pending` - Batch process pending videos
-  - [ ] Protect with `@login_required`
-  - [ ] Add timeout safeguards
-  - [ ] Return processing status
+- [x] Add channel management endpoints to `app.py`
+  - [x] `GET /api/channels` - List all subscribed channels
+  - [x] `POST /api/channels` - Add new channel (validate + fetch metadata)
+  - [x] `DELETE /api/channels/<id>` - Remove channel
+  - [x] Protect all endpoints with `@login_required`
+  - [x] Add input validation
+  - [x] Add error handling and JSON responses
+- [x] Add video listing endpoints to `app.py`
+  - [x] `GET /api/videos` - Paginated video list
+    - [x] Support `page` parameter (default: 1)
+    - [x] Support `per_page` parameter (default: 20, max: 50)
+    - [x] Support `channel_id` filter parameter
+    - [x] Support `order_by` parameter (default: published_at DESC)
+  - [x] Return pagination metadata (total_count, page, per_page)
+  - [x] Protect with `@login_required`
+- [x] Add video detail endpoint to `app.py`
+  - [x] `GET /api/videos/<video_id>` - Full video details with detailed_summary
+  - [x] Protect with `@login_required`
+  - [x] Handle video not found (404)
+- [x] Add manual processing endpoints to `app.py`
+  - [x] `POST /api/sync/channel/<channel_id>` - Fetch new videos from channel
+  - [x] `POST /api/process/video/<video_id>` - Process single video (captions + summaries)
+  - [x] `POST /api/process/pending` - Batch process pending videos
+  - [x] Protect with `@login_required`
+  - [x] Add timeout safeguards
+  - [x] Return processing status
 
 ---
 
 ## Phase 5: Frontend Development
-- [ ] Create base template (`templates/base.html`)
-  - [ ] Add navigation menu: Channels | Videos | Process Single Video | Logout
-  - [ ] Include common CSS and JS libraries
-  - [ ] Add responsive meta tags
-- [ ] Create channel management page
-  - [ ] Create `templates/channels.html`
-    - [ ] Add channel form (YouTube URL input)
-    - [ ] Display channel cards (grid layout)
-    - [ ] Add delete button per channel (with confirmation)
-    - [ ] Add manual sync button per channel
-  - [ ] Create `static/js/channels.js`
-    - [ ] Handle form submission (AJAX)
-    - [ ] Handle channel deletion
-    - [ ] Handle manual sync trigger
-    - [ ] Update UI dynamically
-    - [ ] Add loading states
-    - [ ] Display error messages
-- [ ] Create video list page (main landing page)
-  - [ ] Create `templates/videos.html`
-    - [ ] Grid/card layout (responsive)
-    - [ ] Display: thumbnail, title, channel, published date, short summary
-    - [ ] Add channel filter dropdown
-    - [ ] Add pagination controls (Previous, page numbers, Next)
-    - [ ] Make cards clickable → video detail page
-  - [ ] Create `static/js/videos.js`
-    - [ ] Fetch videos via API (paginated)
-    - [ ] Handle channel filtering
-    - [ ] Handle pagination navigation
-    - [ ] Update URL with query parameters (page, channel_id)
-    - [ ] Add loading states
-    - [ ] Handle empty states
-  - [ ] Create `static/css/videos.css`
-    - [ ] Style video cards
-    - [ ] Style pagination
-    - [ ] Responsive grid layout
-- [ ] Create video detail page
-  - [ ] Create `templates/video_detail.html`
-    - [ ] Display large thumbnail or embedded YouTube player
-    - [ ] Display full title, channel name, published date
-    - [ ] Display detailed summary (markdown rendered)
-    - [ ] Add copy-to-clipboard button
-    - [ ] Add "Back to Videos" link
-    - [ ] Optional: expandable original captions section
-  - [ ] Create `static/js/video_detail.js`
-    - [ ] Fetch video details via API
-    - [ ] Render markdown summary (using Marked.js)
-    - [ ] Handle copy-to-clipboard
-    - [ ] Handle video not found
-- [ ] Update navigation in all templates
-  - [ ] Update `templates/login.html` (if needed)
-  - [ ] Ensure consistent navigation across pages
+- [x] Create base template (`templates/base.html`)
+  - [x] Add navigation menu: Channels | Videos | Process Single Video | Logout
+  - [x] Include common CSS and JS libraries
+  - [x] Add responsive meta tags
+- [x] Create channel management page
+  - [x] Create `templates/channels.html`
+    - [x] Add channel form (YouTube URL input)
+    - [x] Display channel cards (grid layout)
+    - [x] Add delete button per channel (with confirmation)
+    - [x] Add manual sync button per channel
+  - [x] Create `static/js/channels.js`
+    - [x] Handle form submission (AJAX)
+    - [x] Handle channel deletion
+    - [x] Handle manual sync trigger
+    - [x] Update UI dynamically
+    - [x] Add loading states
+    - [x] Display error messages
+- [x] Create video list page (main landing page)
+  - [x] Create `templates/videos.html`
+    - [x] Grid/card layout (responsive)
+    - [x] Display: thumbnail, title, channel, published date, short summary
+    - [x] Add channel filter dropdown
+    - [x] Add pagination controls (Previous, page numbers, Next)
+    - [x] Make cards clickable → video detail page
+  - [x] Create `static/js/videos.js`
+    - [x] Fetch videos via API (paginated)
+    - [x] Handle channel filtering
+    - [x] Handle pagination navigation
+    - [x] Update URL with query parameters (page, channel_id)
+    - [x] Add loading states
+    - [x] Handle empty states
+  - [x] Create `static/css/videos.css`
+    - [x] Style video cards
+    - [x] Style pagination
+    - [x] Responsive grid layout
+- [x] Create video detail page
+  - [x] Create `templates/video_detail.html`
+    - [x] Display large thumbnail or embedded YouTube player
+    - [x] Display full title, channel name, published date
+    - [x] Display detailed summary (markdown rendered)
+    - [x] Add copy-to-clipboard button
+    - [x] Add "Back to Videos" link
+    - [x] Optional: expandable original captions section
+  - [x] Create `static/js/video_detail.js`
+    - [x] Fetch video details via API
+    - [x] Render markdown summary (using Marked.js)
+    - [x] Handle copy-to-clipboard
+    - [x] Handle video not found
+- [x] Update navigation in all templates
+  - [x] Update `templates/login.html` (if needed)
+  - [x] Ensure consistent navigation across pages
 
 ---
 
 ## Phase 6: Update Existing Single-Video Feature
-- [ ] Rename `templates/index.html` to `templates/process_single.html`
-- [ ] Update route in `app.py` (keep `/` as redirect to `/videos`, add `/process` for single video)
-- [ ] Add "Save to Database" functionality
-  - [ ] Create `POST /api/save_video` endpoint
-  - [ ] Accept video_id, title, captions, summaries
-  - [ ] Create/link to channel if not exists
-  - [ ] Store in database
-  - [ ] Return saved video ID
-- [ ] Update `static/js/script.js` (or rename)
-  - [ ] Add "Save to Database" button (appears after processing)
-  - [ ] Handle save action (AJAX POST)
-  - [ ] Redirect to video detail page after save
-  - [ ] Handle already-saved videos (check before processing)
-- [ ] Maintain backward compatibility
-  - [ ] Keep existing `/get_captions` endpoint
-  - [ ] Keep existing `/summarize` endpoint
-  - [ ] Add optional database integration
+- [x] Rename `templates/index.html` to `templates/process_single.html`
+- [x] Update route in `app.py` (keep `/` as redirect to `/videos`, add `/process` for single video)
+- [x] Add "Save to Database" functionality
+  - [x] Create `POST /api/save_video` endpoint
+  - [x] Accept video_id, title, captions, summaries
+  - [x] Create/link to channel if not exists
+  - [x] Store in database
+  - [x] Return saved video ID
+- [x] Update `static/js/script.js` (or rename)
+  - [x] Add "Save to Database" button (appears after processing)
+  - [x] Handle save action (AJAX POST)
+  - [x] Redirect to video detail page after save
+  - [ ] Handle already-saved videos (check before processing) - Optional
+- [x] Maintain backward compatibility
+  - [x] Keep existing `/get_captions` endpoint
+  - [x] Keep existing `/summarize` endpoint
+  - [x] Add optional database integration
+- [x] Additional improvements (beyond original plan)
+  - [x] Fixed caption validation logic to avoid false failures for English videos
+  - [x] Added language detection (Polish vs English)
+  - [x] Implemented language-specific summaries (Polish summaries for Polish videos, English for English)
 
 ---
 
@@ -354,11 +358,17 @@ POSTGRES_URL_NON_POOLING=your_non_pooling_url (optional)
 ---
 
 ## Progress Tracking
-- **Phases Completed**: 0 / 10
-- **Tasks Completed**: 0 / 150+
-- **Current Phase**: Phase 0 - Setup
+- **Phases Completed**: 6 / 10
+- **Tasks Completed**: 120+ / 150+
+- **Current Phase**: Phase 6 - Complete (with language detection enhancements)
 - **Blockers**: None
-- **Next Steps**: Create feature branch and verify environment setup
+- **Next Steps**: Phase 7 - Vercel-Specific Adaptations
+- **Recent Achievements**:
+  - ✅ Full channel subscription system with YouTube API integration
+  - ✅ Video fetching and batch processing system
+  - ✅ Complete frontend with channels, videos, and video detail pages
+  - ✅ Single video processing with database save functionality
+  - ✅ Language detection and language-specific summaries (Polish/English)
 
 ---
 

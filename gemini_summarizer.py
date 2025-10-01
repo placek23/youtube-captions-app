@@ -77,21 +77,34 @@ def summarize_text(text_to_summarize: str) -> str:
             raise
 
 
-def generate_short_summary(text_to_summarize: str) -> str:
+def generate_short_summary(text_to_summarize: str, language_code: str = 'en') -> str:
     """
     Generates a short summary (50-100 words) for video list display.
     Uses Gemini 2.5 Flash model with reduced token limit.
 
     Args:
         text_to_summarize: Caption text to summarize.
+        language_code: Language code ('pl' for Polish, 'en' for English, etc.)
 
     Returns:
         Short summary text.
     """
     client = _get_genai_client()
 
+    # Map language codes to full language names
+    language_map = {
+        'pl': 'Polish',
+        'en': 'English',
+        'es': 'Spanish',
+        'fr': 'French',
+        'de': 'German'
+    }
+    language_name = language_map.get(language_code, 'English')
+
     try:
-        full_prompt = GEMINI_SHORT_PROMPT.format(caption_text=text_to_summarize)
+        # Add language instruction to prompt
+        language_instruction = f"\n\nIMPORTANT: Write the summary in {language_name}."
+        full_prompt = GEMINI_SHORT_PROMPT.format(caption_text=text_to_summarize) + language_instruction
 
         response = client.models.generate_content(
             model='gemini-2.5-flash',
@@ -137,21 +150,34 @@ def generate_short_summary(text_to_summarize: str) -> str:
             raise
 
 
-def generate_detailed_summary(text_to_summarize: str) -> str:
+def generate_detailed_summary(text_to_summarize: str, language_code: str = 'en') -> str:
     """
     Generates a detailed summary for video detail display.
     Uses Gemini 2.5 Flash model with high token limit.
 
     Args:
         text_to_summarize: Caption text to summarize.
+        language_code: Language code ('pl' for Polish, 'en' for English, etc.)
 
     Returns:
         Detailed summary text with markdown formatting.
     """
     client = _get_genai_client()
 
+    # Map language codes to full language names
+    language_map = {
+        'pl': 'Polish',
+        'en': 'English',
+        'es': 'Spanish',
+        'fr': 'French',
+        'de': 'German'
+    }
+    language_name = language_map.get(language_code, 'English')
+
     try:
-        full_prompt = GEMINI_DETAILED_PROMPT.format(caption_text=text_to_summarize)
+        # Add language instruction to prompt
+        language_instruction = f"\n\nIMPORTANT: Write the entire summary in {language_name}."
+        full_prompt = GEMINI_DETAILED_PROMPT.format(caption_text=text_to_summarize) + language_instruction
 
         response = client.models.generate_content(
             model='gemini-2.5-flash',

@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Channel Management - YouTube Caption Summarizer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header {
+        margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+
+    .page-header p {
+        color: #7f8c8d;
+    }
+
+    /* Add Channel Form */
+    .add-channel-section {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+
+    .add-channel-section h2 {
+        color: #2c3e50;
+        margin-bottom: 1rem;
+        font-size: 1.5rem;
+    }
+
+    .channel-form {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .channel-form input[type="url"] {
+        flex: 1;
+        padding: 0.75rem;
+        border: 2px solid #ddd;
+        border-radius: 4px;
+        font-size: 1rem;
+    }
+
+    .channel-form input[type="url"]:focus {
+        outline: none;
+        border-color: #3498db;
+    }
+
+    .channel-form button {
+        padding: 0.75rem 1.5rem;
+        background-color: #3498db;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    .channel-form button:hover {
+        background-color: #2980b9;
+    }
+
+    .channel-form button:disabled {
+        background-color: #95a5a6;
+        cursor: not-allowed;
+    }
+
+    /* Messages */
+    .message {
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+    }
+
+    .message.success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+
+    .message.error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    .message.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+    }
+
+    /* Channels Grid */
+    .channels-section h2 {
+        color: #2c3e50;
+        margin-bottom: 1.5rem;
+    }
+
+    .channels-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .channel-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        overflow: hidden;
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .channel-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .channel-thumbnail {
+        width: 100%;
+        height: 150px;
+        object-fit: cover;
+        background-color: #ecf0f1;
+    }
+
+    .channel-info {
+        padding: 1rem;
+    }
+
+    .channel-name {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+
+    .channel-meta {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+        margin-bottom: 1rem;
+    }
+
+    .channel-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .channel-actions button {
+        flex: 1;
+        padding: 0.5rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background-color 0.3s;
+    }
+
+    .btn-sync {
+        background-color: #3498db;
+        color: white;
+    }
+
+    .btn-sync:hover {
+        background-color: #2980b9;
+    }
+
+    .btn-delete {
+        background-color: #e74c3c;
+        color: white;
+    }
+
+    .btn-delete:hover {
+        background-color: #c0392b;
+    }
+
+    .btn-sync:disabled, .btn-delete:disabled {
+        background-color: #95a5a6;
+        cursor: not-allowed;
+    }
+
+    /* Loading state */
+    .loading {
+        text-align: center;
+        padding: 2rem;
+        color: #7f8c8d;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* Empty state */
+    .empty-state {
+        text-align: center;
+        padding: 3rem 2rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .empty-state h3 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-state p {
+        color: #7f8c8d;
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .channel-form {
+            flex-direction: column;
+        }
+
+        .channels-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Channel Management</h1>
+    <p>Subscribe to YouTube channels to automatically track and summarize their videos</p>
+</div>
+
+<!-- Add Channel Form -->
+<div class="add-channel-section">
+    <h2>Add New Channel</h2>
+    <form id="addChannelForm" class="channel-form">
+        <input
+            type="url"
+            id="channelUrl"
+            name="channel_url"
+            placeholder="Enter YouTube channel URL (e.g., https://www.youtube.com/@channelname)"
+            required
+        >
+        <button type="submit" id="addChannelBtn">Add Channel</button>
+    </form>
+</div>
+
+<!-- Messages container -->
+<div id="messageContainer"></div>
+
+<!-- Process Pending Videos Section -->
+<div class="add-channel-section" id="processPendingSection" style="display: none;">
+    <h2>Video Processing</h2>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+        <div style="flex: 1;">
+            <p id="pendingVideosCount" style="color: #7f8c8d; margin: 0;">
+                <strong id="pendingCount">0</strong> videos waiting to be processed
+            </p>
+            <p style="color: #95a5a6; font-size: 0.9rem; margin: 0.5rem 0 0 0;">
+                Processing extracts captions and generates summaries
+            </p>
+        </div>
+        <button id="processPendingBtn" class="channel-form button" style="white-space: nowrap;">
+            Process Pending Videos
+        </button>
+    </div>
+    <div id="processingProgress" style="margin-top: 1rem; display: none;">
+        <div class="spinner" style="margin: 1rem auto;"></div>
+        <p style="text-align: center; color: #7f8c8d;" id="processingStatus">Processing videos...</p>
+    </div>
+</div>
+
+<!-- Channels List -->
+<div class="channels-section">
+    <h2>Subscribed Channels</h2>
+    <div id="channelsContainer">
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Loading channels...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/channels.js') }}"></script>
+{% endblock %}
