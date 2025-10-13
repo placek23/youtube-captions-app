@@ -231,13 +231,11 @@ All environment variables are loaded from `.env` file (use `.env.example` as tem
   - Fetches up to 10 latest videos
   - Skips duplicates
   - Returns count of new videos added
+  - **Note:** Only fetches video metadata (title, thumbnail, ID); does NOT process captions/summaries
 - `POST /api/process/video/<int:video_id>` - Process single video (extract captions + generate summaries)
   - Status: pending → processing → completed/failed
   - Updates video record with captions and summaries
-- `POST /api/process/pending` - Batch process pending videos
-  - Query param: `limit` (default: 5, max: 10)
-  - Processes videos with status="pending"
-  - Returns processing results
+  - **Triggered from individual video detail pages** - the primary and recommended method for processing videos
 
 ### Single Video Processing (Protected, JSON)
 - `POST /get_captions` - Extract captions from YouTube URL

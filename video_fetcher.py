@@ -218,8 +218,11 @@ def sync_channel_videos(channel_db_id: int, max_results: int = DEFAULT_MAX_RESUL
 
         # Fetch videos from YouTube
         videos = fetch_channel_videos(channel_id, max_results)
+
         if not videos:
-            return 0, 0, "No videos found or YouTube API error"
+            # No videos found is a valid state (channel may not have posted recently)
+            logger.info(f"Sync complete for {channel_name}: 0 videos found")
+            return 0, 0, None
 
         # Store videos in database
         new_count, skipped_count = store_videos_in_database(channel_db_id, videos)

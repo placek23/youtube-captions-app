@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Process Single Video - YouTube Caption Summarizer{% endblock %}
+{% block title %}Date Range Summary - YouTube Caption Summarizer{% endblock %}
 
 {% block extra_css %}
 <!-- DOMPurify for XSS protection -->
@@ -23,8 +23,8 @@
         color: #7f8c8d;
     }
 
-    /* Input Section */
-    .input-section {
+    /* Date Picker Section */
+    .date-picker-section {
         background: white;
         padding: 2rem;
         border-radius: 8px;
@@ -32,21 +32,34 @@
         margin-bottom: 2rem;
     }
 
-    .input-group {
+    .date-picker-group {
         display: flex;
         gap: 1rem;
-        align-items: flex-start;
+        align-items: flex-end;
+        flex-wrap: wrap;
     }
 
-    #video-url {
-        flex: 1;
+    .date-input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .date-input-group label {
+        font-weight: 600;
+        color: #2c3e50;
+        font-size: 0.9rem;
+    }
+
+    .date-input-group input[type="date"] {
         padding: 0.75rem;
         border: 2px solid #ddd;
         border-radius: 4px;
         font-size: 1rem;
+        min-width: 200px;
     }
 
-    #video-url:focus {
+    .date-input-group input[type="date"]:focus {
         outline: none;
         border-color: #3498db;
     }
@@ -90,6 +103,12 @@
         border: 1px solid #c3e6cb;
     }
 
+    .message.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+    }
+
     /* Loading */
     .loading-container {
         text-align: center;
@@ -112,8 +131,42 @@
         100% { transform: rotate(360deg); }
     }
 
-    /* Output Sections */
-    .output-section {
+    /* Stats Section */
+    .stats-section {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .stat-card {
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        text-align: center;
+    }
+
+    .stat-card .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #3498db;
+    }
+
+    .stat-card .stat-label {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+        margin-top: 0.5rem;
+    }
+
+    /* Summary Section */
+    .summary-section {
         background: white;
         padding: 2rem;
         border-radius: 8px;
@@ -121,45 +174,20 @@
         margin-bottom: 2rem;
     }
 
-    .output-section h2 {
+    .summary-section h2 {
         color: #2c3e50;
         margin-bottom: 1rem;
         font-size: 1.5rem;
     }
 
-    #captions-output {
-        width: 100%;
-        min-height: 300px;
-        padding: 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-family: monospace;
-        font-size: 0.9rem;
-        line-height: 1.6;
-        background-color: #f8f9fa;
-        resize: vertical;
-        box-sizing: border-box;
-        white-space: pre-wrap;
-        overflow-wrap: break-word;
-        margin-bottom: 1rem;
-    }
-
-    .button-group {
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-    }
-
     #summary-output {
-        min-height: 200px;
-        padding: 1rem;
+        min-height: 300px;
+        padding: 1.5rem;
         border: 1px solid #ddd;
         border-radius: 4px;
         background-color: #f8f9fa;
         font-size: 1rem;
         line-height: 1.7;
-        white-space: pre-wrap;
-        word-wrap: break-word;
         box-sizing: border-box;
     }
 
@@ -169,6 +197,20 @@
         color: #2c3e50;
         margin-top: 1.5rem;
         margin-bottom: 0.75rem;
+    }
+
+    #summary-output h1 {
+        font-size: 1.8rem;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 0.5rem;
+    }
+
+    #summary-output h2 {
+        font-size: 1.4rem;
+    }
+
+    #summary-output h3 {
+        font-size: 1.2rem;
     }
 
     #summary-output ul,
@@ -185,22 +227,30 @@
         margin: 1rem 0;
     }
 
+    #summary-output strong {
+        color: #2c3e50;
+    }
+
     .hidden {
         display: none !important;
     }
 
     /* Responsive design */
     @media (max-width: 768px) {
-        .input-group {
+        .date-picker-group {
             flex-direction: column;
         }
 
-        .button-group {
-            flex-direction: column;
+        .date-input-group input[type="date"] {
+            width: 100%;
         }
 
         .btn {
             width: 100%;
+        }
+
+        .stats-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>
@@ -210,15 +260,22 @@
 <meta name="csrf-token" content="{{ csrf_token }}" class="csrf-meta">
 
 <div class="page-header">
-    <h1>Process Single Video</h1>
-    <p>Extract captions and generate AI summaries for any YouTube video</p>
+    <h1>Date Range Summary</h1>
+    <p>Select a date range to generate an AI-powered summary of all processed videos</p>
 </div>
 
-<!-- Input Section -->
-<div class="input-section">
-    <div class="input-group">
-        <input type="text" id="video-url" placeholder="Enter YouTube Video URL (e.g., https://www.youtube.com/watch?v=...)">
-        <button id="get-captions-btn" class="btn">Get Captions</button>
+<!-- Date Picker Section -->
+<div class="date-picker-section">
+    <div class="date-picker-group">
+        <div class="date-input-group">
+            <label for="start-date">Start Date</label>
+            <input type="date" id="start-date" required>
+        </div>
+        <div class="date-input-group">
+            <label for="end-date">End Date</label>
+            <input type="date" id="end-date" required>
+        </div>
+        <button id="generate-summary-btn" class="btn">Generate Summary</button>
     </div>
 </div>
 
@@ -228,28 +285,35 @@
 <!-- Loading state -->
 <div id="loading" class="loading-container hidden">
     <div class="spinner"></div>
-    <p>Loading...</p>
+    <p id="loading-message">Loading videos...</p>
 </div>
 
-<!-- Captions Section -->
-<div id="captionsSection" class="output-section hidden">
-    <h2>Captions</h2>
-    <textarea id="captions-output" readonly></textarea>
-    <div class="button-group">
-        <button id="copy-captions-btn" class="btn">Copy Captions</button>
-        <button id="summarize-btn" class="btn">Summarize Captions</button>
-        <button id="save-to-db-btn" class="btn hidden">Save to Database</button>
+<!-- Stats Section -->
+<div id="statsSection" class="stats-section hidden">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="stat-videos">0</div>
+            <div class="stat-label">Videos Processed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-channels">0</div>
+            <div class="stat-label">Channels</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="stat-date-range">-</div>
+            <div class="stat-label">Date Range</div>
+        </div>
     </div>
 </div>
 
 <!-- Summary Section -->
-<div id="summarySection" class="output-section hidden">
-    <h2>Summary</h2>
+<div id="summarySection" class="summary-section hidden">
+    <h2>AI-Generated Summary</h2>
     <div id="summary-output"></div>
 </div>
 
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='script.js') }}"></script>
+<script src="{{ url_for('static', filename='js/date_summary.js') }}"></script>
 {% endblock %}

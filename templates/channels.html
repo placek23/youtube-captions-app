@@ -114,11 +114,28 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         overflow: hidden;
         transition: transform 0.3s, box-shadow 0.3s;
+        position: relative;
     }
 
     .channel-card:hover {
         transform: translateY(-4px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .channel-card.selected {
+        border: 2px solid #3498db;
+        box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+    }
+
+    .channel-select-checkbox {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 24px;
+        height: 24px;
+        cursor: pointer;
+        z-index: 10;
+        accent-color: #3498db;
     }
 
     .channel-thumbnail {
@@ -223,6 +240,47 @@
         color: #7f8c8d;
     }
 
+    /* Bulk Actions */
+    .bulk-actions-container {
+        display: none;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .btn-action {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        font-weight: 500;
+    }
+
+    .btn-select-all {
+        background-color: #95a5a6;
+        color: white;
+    }
+
+    .btn-select-all:hover {
+        background-color: #7f8c8d;
+    }
+
+    .btn-bulk-sync {
+        background-color: #3498db;
+        color: white;
+    }
+
+    .btn-bulk-sync:hover {
+        background-color: #2980b9;
+    }
+
+    .btn-action:disabled {
+        background-color: #bdc3c7;
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
     /* Responsive design */
     @media (max-width: 768px) {
         .channel-form {
@@ -231,6 +289,15 @@
 
         .channels-grid {
             grid-template-columns: 1fr;
+        }
+
+        .bulk-actions-container {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .btn-action {
+            width: 100%;
         }
     }
 </style>
@@ -260,31 +327,19 @@
 <!-- Messages container -->
 <div id="messageContainer"></div>
 
-<!-- Process Pending Videos Section -->
-<div class="add-channel-section" id="processPendingSection" style="display: none;">
-    <h2>Video Processing</h2>
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-        <div style="flex: 1;">
-            <p id="pendingVideosCount" style="color: #7f8c8d; margin: 0;">
-                <strong id="pendingCount">0</strong> videos waiting to be processed
-            </p>
-            <p style="color: #95a5a6; font-size: 0.9rem; margin: 0.5rem 0 0 0;">
-                Processing extracts captions and generates summaries
-            </p>
-        </div>
-        <button id="processPendingBtn" class="channel-form button" style="white-space: nowrap;">
-            Process Pending Videos
-        </button>
-    </div>
-    <div id="processingProgress" style="margin-top: 1rem; display: none;">
-        <div class="spinner" style="margin: 1rem auto;"></div>
-        <p style="text-align: center; color: #7f8c8d;" id="processingStatus">Processing videos...</p>
-    </div>
-</div>
-
 <!-- Channels List -->
 <div class="channels-section">
-    <h2>Subscribed Channels</h2>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;">
+        <h2 style="margin: 0;">Subscribed Channels</h2>
+        <div id="bulkActionsContainer" class="bulk-actions-container">
+            <button id="selectAllBtn" class="btn-action btn-select-all">
+                Select All
+            </button>
+            <button id="bulkSyncBtn" class="btn-action btn-bulk-sync">
+                Sync Selected (<span id="selectedCount">0</span>)
+            </button>
+        </div>
+    </div>
     <div id="channelsContainer">
         <div class="loading">
             <div class="spinner"></div>

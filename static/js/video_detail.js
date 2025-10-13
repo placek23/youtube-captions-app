@@ -39,8 +39,14 @@ async function loadVideoDetails(videoId) {
     }
 }
 
+// Store current video globally for access by other functions
+let currentVideo = null;
+
 // Display video details
 function displayVideoDetails(video) {
+    // Store video for later use
+    currentVideo = video;
+
     const container = document.getElementById('videoDetailContainer');
 
     // Create video player/thumbnail section
@@ -104,10 +110,19 @@ function displayVideoDetails(video) {
                     Watch on YouTube
                 </a>
                 ${status === 'pending' || status === 'failed'
-                    ? `<button onclick="processVideo('${video.video_id}')" class="btn btn-secondary">Process Video</button>`
+                    ? `<button onclick="processVideo()" class="btn btn-secondary">Process Video</button>`
                     : ''
                 }
             </div>
+            ${status === 'pending' || status === 'failed'
+                ? `<div class="progress-container" id="processingProgress">
+                    <div class="progress-label" id="progressText">Preparing to process...</div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progressBar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
+                    </div>
+                </div>`
+                : ''
+            }
         </div>
     `;
 
@@ -251,30 +266,162 @@ async function copyCaptions(button) {
 }
 
 // Process video (extract captions and generate summaries)
-async function processVideo(videoId) {
+async function processVideo() {
+    if (!currentVideo) {
+        alert('Video data not available');
+        return;
+    }
+
     const confirmed = confirm('This will extract captions and generate summaries for this video. This may take a few minutes. Continue?');
 
     if (!confirmed) return;
 
+    const videoId = currentVideo.video_id; // YouTube video ID
+
+    // Show progress bar
+    const progressContainer = document.getElementById('processingProgress');
+    const processBtn = document.querySelector(`button[onclick*="processVideo"]`);
+
+    if (progressContainer) {
+        progressContainer.style.display = 'block';
+        updateProgress('Extracting captions...', 33);
+    }
+
+    if (processBtn) {
+        processBtn.disabled = true;
+        processBtn.textContent = 'Processing...';
+    }
+
     try {
+        // Start processing
         const response = await fetch(`/api/process/video/${videoId}`, {
             method: 'POST'
         });
 
         const data = await response.json();
 
-        if (response.ok) {
-            alert(data.message || 'Video processing started. Please refresh the page in a few moments.');
-            // Reload the page after a delay
+        if (!response.ok) {
+            console.error('Processing error:', data);
+            const errorMsg = data.error || 'Failed to start processing';
+            updateProgress('Error: ' + errorMsg, 0);
+
+            // Show alert for visibility
             setTimeout(() => {
-                window.location.reload();
-            }, 2000);
-        } else {
-            alert(data.error || 'Failed to process video');
+                alert('Processing failed: ' + errorMsg);
+            }, 500);
+
+            if (processBtn) {
+                processBtn.disabled = false;
+                processBtn.textContent = 'Process Video';
+            }
+            return;
         }
+
+        // Poll for status updates using the YouTube video ID
+        await pollVideoStatus(videoId);
+
     } catch (error) {
         console.error('Error processing video:', error);
-        alert('Failed to process video. Please try again.');
+        updateProgress('Processing failed. Please try again.', 0);
+        if (processBtn) {
+            processBtn.disabled = false;
+            processBtn.textContent = 'Process Video';
+        }
+    }
+}
+
+// Poll video status for progress updates
+async function pollVideoStatus(videoId) {
+    const maxAttempts = 120; // 2 minutes max (120 * 1 second)
+    let attempts = 0;
+    let currentStep = 0;
+
+    const steps = [
+        { message: 'Extracting captions...', percentage: 33 },
+        { message: 'Generating short summary...', percentage: 66 },
+        { message: 'Generating detailed summary...', percentage: 90 }
+    ];
+
+    // First step is already shown, start from step 0
+    const pollInterval = setInterval(async () => {
+        attempts++;
+
+        // Show simulated progress every 3 seconds
+        if (attempts === 3 && currentStep === 0) {
+            currentStep++;
+            updateProgress(steps[currentStep].message, steps[currentStep].percentage);
+        } else if (attempts === 6 && currentStep === 1) {
+            currentStep++;
+            updateProgress(steps[currentStep].message, steps[currentStep].percentage);
+        }
+
+        try {
+            const response = await fetch(`/api/videos/${videoId}`);
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch video status');
+            }
+
+            const video = await response.json();
+            const status = video.processing_status || 'pending';
+
+            // Update progress based on actual status
+            if (status === 'completed') {
+                updateProgress('Processing complete!', 100);
+                clearInterval(pollInterval);
+
+                // Reload page after brief delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else if (status === 'failed') {
+                updateProgress('Processing failed. Please try again.', 0);
+                clearInterval(pollInterval);
+
+                // Re-enable button
+                const processBtn = document.querySelector(`button[onclick*="processVideo"]`);
+                if (processBtn) {
+                    processBtn.disabled = false;
+                    processBtn.textContent = 'Process Video';
+                }
+            }
+
+            // Timeout after max attempts
+            if (attempts >= maxAttempts) {
+                updateProgress('Processing is taking longer than expected. Please refresh the page.', 66);
+                clearInterval(pollInterval);
+            }
+
+        } catch (error) {
+            console.error('Error polling status:', error);
+            clearInterval(pollInterval);
+            updateProgress('Error checking status. Please refresh the page.', 0);
+        }
+    }, 1000); // Poll every second
+}
+
+// Update progress bar
+function updateProgress(message, percentage) {
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+
+    if (progressBar) {
+        progressBar.style.width = percentage + '%';
+        progressBar.setAttribute('aria-valuenow', percentage);
+
+        // Remove all state classes
+        progressBar.classList.remove('error', 'complete');
+
+        // Add appropriate class based on state
+        if (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed')) {
+            progressBar.classList.add('error');
+        } else if (percentage === 100 || message.toLowerCase().includes('complete')) {
+            progressBar.classList.add('complete');
+        }
+    }
+
+    if (progressText) {
+        progressText.textContent = message;
     }
 }
 

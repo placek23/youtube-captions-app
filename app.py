@@ -195,6 +195,12 @@ def process_single_page():
     """Renders the single video processing page."""
     return render_template('process_single.html', current_user=current_user)
 
+@app.route('/date-summary')
+@login_required
+def date_summary_page():
+    """Renders the date range summary page."""
+    return render_template('date_summary.html', current_user=current_user)
+
 @app.route('/get_captions', methods=['POST'])
 @login_required
 @limiter.limit("10 per minute")
@@ -236,6 +242,71 @@ def summarize_route():
         return jsonify({'summary': summary})
     except Exception as e:
         logger.error(f"Error summarizing text: {e}", exc_info=True)
+        return jsonify({'error': 'An error occurred while generating the summary. Please try again.'}), 500
+
+
+@app.route('/api/summarize/date-range', methods=['POST'])
+@login_required
+@limiter.limit("5 per minute")
+def summarize_date_range_route():
+    """API endpoint to generate a comprehensive summary from multiple videos in a date range."""
+    try:
+        data = request.get_json()
+        videos = data.get('videos')
+
+        if not videos or not isinstance(videos, list) or len(videos) == 0:
+            return jsonify({'error': 'Videos array is required and must not be empty'}), 400
+
+        # Extract date range from videos
+        dates = [v.get('published_at') for v in videos if v.get('published_at')]
+        if not dates:
+            return jsonify({'error': 'Videos must have published_at dates'}), 400
+
+        start_date = min(dates)
+        end_date = max(dates)
+
+        # Detect language from videos (use majority language)
+        from collections import Counter
+
+        # Try to detect language from summaries or default to Polish
+        detected_langs = []
+        for video in videos:
+            # Simple heuristic: if summary contains Polish characters, assume Polish
+            summary_text = video.get('short_summary', '') + video.get('detailed_summary', '')
+            if any(char in summary_text for char in 'ąćęłńóśźżĄĆĘŁŃÓŚŹŻ'):
+                detected_langs.append('pl')
+            else:
+                detected_langs.append('en')
+
+        # Use most common language, default to Polish
+        if detected_langs:
+            language_code = Counter(detected_langs).most_common(1)[0][0]
+        else:
+            language_code = 'pl'
+
+        # Import the new function
+        from gemini_summarizer import generate_date_range_summary
+
+        # Generate the comprehensive summary
+        summary = generate_date_range_summary(
+            videos_data=videos,
+            start_date=start_date,
+            end_date=end_date,
+            language_code=language_code
+        )
+
+        logger.info(f"Generated date range summary for {len(videos)} videos from {start_date} to {end_date}")
+
+        return jsonify({
+            'summary': summary,
+            'video_count': len(videos),
+            'start_date': start_date,
+            'end_date': end_date,
+            'language': language_code
+        })
+
+    except Exception as e:
+        logger.error(f"Error generating date range summary: {e}", exc_info=True)
         return jsonify({'error': 'An error occurred while generating the summary. Please try again.'}), 500
 
 
@@ -357,6 +428,83 @@ def sync_channel_route(channel_id):
         return jsonify({'error': 'Failed to sync channel'}), 500
 
 
+@app.route('/api/sync/channels/bulk', methods=['POST'])
+@login_required
+@limiter.limit("3 per minute")
+def bulk_sync_channels_route():
+    """Sync multiple channels at once."""
+    try:
+        data = request.get_json()
+        if not data or 'channel_ids' not in data:
+            return jsonify({'error': 'channel_ids array is required'}), 400
+
+        channel_ids = data['channel_ids']
+
+        if not isinstance(channel_ids, list):
+            return jsonify({'error': 'channel_ids must be an array'}), 400
+
+        if len(channel_ids) == 0:
+            return jsonify({'error': 'At least one channel ID is required'}), 400
+
+        if len(channel_ids) > 20:
+            return jsonify({'error': 'Maximum 20 channels can be synced at once'}), 400
+
+        max_videos_per_channel = data.get('max_videos', 50)
+
+        # Validate max_videos
+        is_valid, max_videos_per_channel, error = validate_max_videos(max_videos_per_channel, max_allowed=50)
+        if not is_valid:
+            return jsonify({'error': error}), 400
+
+        results = []
+        total_new_videos = 0
+        total_skipped_videos = 0
+        failed_channels = []
+
+        # Sync each channel
+        for channel_id in channel_ids:
+            # Validate each channel ID
+            is_valid, sanitized_id, error = validate_integer_id(channel_id, "Channel ID")
+            if not is_valid:
+                failed_channels.append({'channel_id': channel_id, 'error': error})
+                continue
+
+            try:
+                new_count, skipped_count, error = sync_channel_videos(sanitized_id, max_videos_per_channel)
+
+                if error:
+                    failed_channels.append({'channel_id': sanitized_id, 'error': error})
+                else:
+                    total_new_videos += new_count
+                    total_skipped_videos += skipped_count
+                    results.append({
+                        'channel_id': sanitized_id,
+                        'new_videos': new_count,
+                        'skipped_videos': skipped_count
+                    })
+            except Exception as e:
+                logger.error(f"Error syncing channel {sanitized_id}: {e}")
+                failed_channels.append({'channel_id': sanitized_id, 'error': str(e)})
+
+        response = {
+            'success': True,
+            'synced_channels': len(results),
+            'total_new_videos': total_new_videos,
+            'total_skipped_videos': total_skipped_videos,
+            'message': f'Synced {len(results)} channels, found {total_new_videos} new videos'
+        }
+
+        if failed_channels:
+            response['failed_channels'] = failed_channels
+            response['message'] += f'. {len(failed_channels)} channels failed.'
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error in bulk sync: {e}")
+        return jsonify({'error': 'Failed to sync channels'}), 500
+
+
 # ============================================================================
 # Video Listing API Endpoints
 # ============================================================================
@@ -460,6 +608,62 @@ def get_video_detail(video_id):
     except Exception as e:
         logger.error(f"Error fetching video detail: {e}")
         return jsonify({'error': 'Failed to fetch video'}), 500
+
+
+@app.route('/api/videos/date-range', methods=['POST'])
+@login_required
+@limiter.limit("10 per minute")
+def get_videos_by_date_range():
+    """Get all completed videos within a specific date range."""
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+
+        if not start_date or not end_date:
+            return jsonify({'error': 'Both start_date and end_date are required'}), 400
+
+        # Validate date format (YYYY-MM-DD)
+        from datetime import datetime
+        try:
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+        if start > end:
+            return jsonify({'error': 'Start date must be before or equal to end date'}), 400
+
+        with get_db_session() as session:
+            # Query videos within date range with completed processing status
+            videos = session.query(Video).filter(
+                Video.published_at >= start,
+                Video.published_at <= end,
+                Video.processing_status == ProcessingStatus.COMPLETED
+            ).order_by(desc(Video.published_at)).all()
+
+            # Convert to dict before session closes
+            videos_data = []
+            for video in videos:
+                video_dict = video.to_dict(include_detailed=False)
+                # Add channel name if available
+                if video.channel:
+                    video_dict['channel_name'] = video.channel.channel_name
+                videos_data.append(video_dict)
+
+        logger.info(f"Fetched {len(videos_data)} videos from {start_date} to {end_date}")
+
+        return jsonify({
+            'videos': videos_data,
+            'count': len(videos_data),
+            'start_date': start_date,
+            'end_date': end_date
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching videos by date range: {e}")
+        return jsonify({'error': 'Failed to fetch videos'}), 500
+
 
 @app.route('/api/save_video', methods=['POST'])
 @login_required

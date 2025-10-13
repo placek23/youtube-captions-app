@@ -6,7 +6,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const captionsOutput = document.getElementById('captions-output');
     const summaryOutput = document.getElementById('summary-output');
     const loadingDiv = document.getElementById('loading');
-    const errorDiv = document.getElementById('error');
+    const messageContainer = document.getElementById('messageContainer');
+    const captionsSection = document.getElementById('captionsSection');
+    const summarySection = document.getElementById('summarySection');
     const copyCaptionsBtn = document.getElementById('copy-captions-btn');
 
     // Store video data for saving
@@ -60,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok) {
                 captionsOutput.value = data.captions;
-                summarizeBtn.classList.remove('hidden');
+                captionsSection.classList.remove('hidden');
 
                 // Store video data
                 videoData.video_url = videoUrl;
@@ -87,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         showLoading(true);
         summaryOutput.innerHTML = '';
-        errorDiv.classList.add('hidden');
+        clearMessages();
 
         try {
             const response = await fetch('/summarize', {
@@ -106,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rawHtml = marked.parse(data.summary);
                 const cleanHtml = DOMPurify.sanitize(rawHtml);
                 summaryOutput.innerHTML = cleanHtml;
+                summarySection.classList.remove('hidden');
 
                 // Store summary data (treat the summary as detailed_summary)
                 videoData.detailed_summary = data.summary;
@@ -135,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             showLoading(true);
-            errorDiv.classList.add('hidden');
+            clearMessages();
 
             try {
                 const response = await fetch('/api/save_video', {
@@ -196,11 +199,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetState() {
         captionsOutput.value = '';
         summaryOutput.innerHTML = '';
+        captionsSection.classList.add('hidden');
+        summarySection.classList.add('hidden');
         summarizeBtn.classList.add('hidden');
         if (saveToDbBtn) {
             saveToDbBtn.classList.add('hidden');
         }
-        errorDiv.classList.add('hidden');
+        clearMessages();
         // Reset video data
         videoData = {
             video_id: '',
@@ -217,8 +222,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showError(message) {
-        errorDiv.textContent = message;
-        errorDiv.classList.remove('hidden');
+        clearMessages();
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message error';
+        messageDiv.textContent = message;
+        messageContainer.appendChild(messageDiv);
+    }
+
+    function showSuccess(message) {
+        clearMessages();
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message success';
+        messageDiv.textContent = message;
+        messageContainer.appendChild(messageDiv);
+    }
+
+    function clearMessages() {
+        messageContainer.innerHTML = '';
     }
 
     // The formatSummary function is not strictly necessary if marked.js is handling all formatting.

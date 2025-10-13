@@ -1,18 +1,25 @@
 // Channel Management JavaScript
 
+// Track selected channels
+let selectedChannels = new Set();
+
 // Load channels when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadChannels();
-    loadPendingCount();
 
     // Setup form submission
     const form = document.getElementById('addChannelForm');
     form.addEventListener('submit', handleAddChannel);
 
-    // Setup process pending button
-    const processPendingBtn = document.getElementById('processPendingBtn');
-    if (processPendingBtn) {
-        processPendingBtn.addEventListener('click', handleProcessPending);
+    // Setup bulk actions
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', handleSelectAll);
+    }
+
+    const bulkSyncBtn = document.getElementById('bulkSyncBtn');
+    if (bulkSyncBtn) {
+        bulkSyncBtn.addEventListener('click', handleBulkSync);
     }
 });
 
@@ -56,10 +63,21 @@ function displayChannels(channels) {
 
     container.innerHTML = gridHTML;
 
-    // Attach event listeners to all buttons
+    // Show bulk actions if there are channels
+    const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+    if (bulkActionsContainer) {
+        bulkActionsContainer.style.display = channels.length > 0 ? 'flex' : 'none';
+    }
+
+    // Attach event listeners to all buttons and checkboxes
     channels.forEach(channel => {
+        const checkbox = document.getElementById(`checkbox-${channel.id}`);
         const syncBtn = document.getElementById(`sync-${channel.id}`);
         const deleteBtn = document.getElementById(`delete-${channel.id}`);
+
+        if (checkbox) {
+            checkbox.addEventListener('change', (e) => handleCheckboxChange(channel.id, e.target.checked));
+        }
 
         if (syncBtn) {
             syncBtn.addEventListener('click', () => handleSyncChannel(channel.id));
@@ -78,6 +96,7 @@ function createChannelCard(channel) {
 
     return `
         <div class="channel-card" data-channel-id="${channel.id}">
+            <input type="checkbox" class="channel-select-checkbox" id="checkbox-${channel.id}" />
             <img src="${thumbnailUrl}" alt="${channel.channel_name}" class="channel-thumbnail">
             <div class="channel-info">
                 <div class="channel-name">${escapeHtml(channel.channel_name)}</div>
@@ -168,8 +187,6 @@ async function handleSyncChannel(channelId) {
 
         if (response.ok) {
             showMessage(data.message || 'Channel synced successfully!', 'success');
-            // Reload pending count after successful sync
-            await loadPendingCount();
         } else {
             showMessage(data.error || 'Failed to sync channel', 'error');
         }
@@ -261,98 +278,115 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Load pending videos count from API
-async function loadPendingCount() {
-    try {
-        const response = await fetch('/api/stats');
+// Handle checkbox change
+function handleCheckboxChange(channelId, isChecked) {
+    if (isChecked) {
+        selectedChannels.add(channelId);
+    } else {
+        selectedChannels.delete(channelId);
+    }
 
-        if (!response.ok) {
-            console.error('Failed to load pending count:', response.status);
-            return;
+    // Update the selected card styling
+    const card = document.querySelector(`[data-channel-id="${channelId}"]`);
+    if (card) {
+        if (isChecked) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
         }
+    }
 
-        const data = await response.json();
-        const pendingCount = data.pending_processing || 0;
+    updateSelectedCount();
+}
 
-        // Update the count display
-        const countElement = document.getElementById('pendingCount');
-        if (countElement) {
-            countElement.textContent = pendingCount;
+// Update selected count display
+function updateSelectedCount() {
+    const countElement = document.getElementById('selectedCount');
+    if (countElement) {
+        countElement.textContent = selectedChannels.size;
+    }
+
+    // Update select all button text
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const totalCheckboxes = document.querySelectorAll('.channel-select-checkbox').length;
+    if (selectAllBtn) {
+        if (selectedChannels.size === totalCheckboxes && totalCheckboxes > 0) {
+            selectAllBtn.textContent = 'Deselect All';
+        } else {
+            selectAllBtn.textContent = 'Select All';
         }
-
-        // Show or hide the processing section based on pending count
-        const processingSection = document.getElementById('processPendingSection');
-        if (processingSection) {
-            processingSection.style.display = pendingCount > 0 ? 'block' : 'none';
-        }
-    } catch (error) {
-        console.error('Error loading pending count:', error);
     }
 }
 
-// Handle process pending videos button click
-async function handleProcessPending() {
-    const processPendingBtn = document.getElementById('processPendingBtn');
-    const progressDiv = document.getElementById('processingProgress');
-    const statusText = document.getElementById('processingStatus');
+// Handle select all button click
+function handleSelectAll() {
+    const checkboxes = document.querySelectorAll('.channel-select-checkbox');
+    const selectAllBtn = document.getElementById('selectAllBtn');
 
-    if (!processPendingBtn || !progressDiv || !statusText) return;
+    // If all are selected, deselect all. Otherwise, select all.
+    const shouldSelect = selectedChannels.size !== checkboxes.length;
 
-    // Disable button and show progress
-    processPendingBtn.disabled = true;
-    progressDiv.style.display = 'block';
-    statusText.textContent = 'Processing videos...';
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = shouldSelect;
+        const channelId = parseInt(checkbox.id.replace('checkbox-', ''));
+        handleCheckboxChange(channelId, shouldSelect);
+    });
+}
+
+// Handle bulk sync button click
+async function handleBulkSync() {
+    if (selectedChannels.size === 0) {
+        showMessage('Please select at least one channel to sync', 'error');
+        return;
+    }
+
+    const bulkSyncBtn = document.getElementById('bulkSyncBtn');
+    if (!bulkSyncBtn) return;
+
+    // Disable button during sync
+    bulkSyncBtn.disabled = true;
+    const originalText = bulkSyncBtn.innerHTML;
+    bulkSyncBtn.innerHTML = 'Syncing...';
 
     try {
-        const response = await fetch('/api/process/pending', {
+        const response = await fetch('/api/sync/channels/bulk', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ batch_size: 5 })
+            body: JSON.stringify({
+                channel_ids: Array.from(selectedChannels),
+                max_videos: 50
+            })
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            const processed = data.processed || 0;
-            const failed = data.failed || 0;
-            const remaining = data.remaining || 0;
+            showMessage(data.message || 'Channels synced successfully!', 'success');
 
-            let message = `Processed ${processed} video(s)`;
-            if (failed > 0) {
-                message += `, ${failed} failed`;
-            }
-            if (remaining > 0) {
-                message += `. ${remaining} video(s) remaining.`;
-            } else {
-                message += '. All videos processed!';
-            }
+            // Clear selections
+            selectedChannels.clear();
+            document.querySelectorAll('.channel-select-checkbox').forEach(cb => {
+                cb.checked = false;
+            });
+            document.querySelectorAll('.channel-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            updateSelectedCount();
 
-            showMessage(message, 'success');
-
-            // Reload pending count
-            await loadPendingCount();
-
-            // If there are still videos remaining, suggest processing again
-            if (remaining > 0) {
-                statusText.textContent = `${remaining} video(s) still pending. Click again to continue processing.`;
+            // Show any failed channels
+            if (data.failed_channels && data.failed_channels.length > 0) {
+                console.error('Failed channels:', data.failed_channels);
             }
         } else {
-            showMessage(data.error || 'Failed to process videos', 'error');
+            showMessage(data.error || 'Failed to sync channels', 'error');
         }
     } catch (error) {
-        console.error('Error processing pending videos:', error);
-        showMessage('Failed to process videos. Please try again.', 'error');
+        console.error('Error syncing channels:', error);
+        showMessage('Failed to sync channels. Please try again.', 'error');
     } finally {
-        processPendingBtn.disabled = false;
-        // Hide progress indicator after a short delay if no more videos
-        setTimeout(() => {
-            const countElement = document.getElementById('pendingCount');
-            const count = parseInt(countElement?.textContent || '0');
-            if (count === 0) {
-                progressDiv.style.display = 'none';
-            }
-        }, 2000);
+        bulkSyncBtn.disabled = false;
+        bulkSyncBtn.innerHTML = originalText;
     }
 }

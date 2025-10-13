@@ -12,17 +12,17 @@
         /* Navigation styles */
         nav {
             background-color: #2c3e50;
-            padding: 1rem 2rem;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
 
         nav ul {
             list-style: none;
-            margin: 0;
-            padding: 0;
+            margin: 0 auto;
+            padding: 1rem 2rem;
             display: flex;
             gap: 2rem;
             align-items: center;
+            max-width: 1400px;
         }
 
         nav li {
@@ -89,6 +89,7 @@
             <li><a href="{{ url_for('videos_page') }}" id="nav-videos">Videos</a></li>
             <li><a href="{{ url_for('channels_page') }}" id="nav-channels">Channels</a></li>
             <li><a href="{{ url_for('process_single_page') }}" id="nav-process">Process Single Video</a></li>
+            <li><a href="{{ url_for('date_summary_page') }}" id="nav-date-summary">Date Summary</a></li>
             <li class="logout"><a href="{{ url_for('logout') }}">Logout</a></li>
         </ul>
     </nav>
@@ -112,6 +113,7 @@
                 '/videos': 'nav-videos',
                 '/channels': 'nav-channels',
                 '/process': 'nav-process',
+                '/date-summary': 'nav-date-summary',
                 '/': 'nav-videos'  // Default home page
             };
 
